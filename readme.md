@@ -22,3 +22,10 @@ This repository contains a collection of algorithms and data structures implemen
 
 #### R3Nlopt.py
 - *Summary*: 3R机器人关节零点标定,使用nlopt优化
+
+### arm
+#### arm_joint_cali.py
+- *Summary*: 机械臂关节零点标定,使用nlopt优化
+
+#### arm_kinematics.py
+- *Summary*: 机械臂运动学求解
