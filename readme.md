@@ -10,3 +10,15 @@ This repository contains a collection of algorithms and data structures implemen
 <p align="center">
     <img src="img/sat.png" width="300">
 </p>
+
+## joint zero point cali
+
+### plane arm
+#### R2Descent.py
+- *Summary*: 2R机器人关节零点标定,使用梯度下降法
+
+#### R3LM.py
+- *Summary*: 3R机器人关节零点标定,使用LM算法
+
+#### R3Nlopt.py
+- *Summary*: 3R机器人关节零点标定,使用nlopt优化
