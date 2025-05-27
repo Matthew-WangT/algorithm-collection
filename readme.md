@@ -93,3 +93,10 @@ time cost: 17.52 ms
 
 #### arm_kinematics.py
 - *Summary*: 机械臂运动学求解
+
+## robot config space
+### rr_robot_config_space_interactive.py
+- *Summary*: 2R机械臂配置空间可视化
+<p align="center">
+    <img src="img/RR_config_space.jpg" width="500">
+</p>
