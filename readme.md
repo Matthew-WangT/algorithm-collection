@@ -11,6 +11,27 @@ This repository contains a collection of algorithms and data structures implemen
     <img src="img/sat.png" width="300">
 </p>
 
+### reflection_matrix_coordinate_conversion.py
+- *Summary*: 坐标系转换与轴角表示可视化工具。该程序演示了左手坐标系与右手坐标系之间的转换，以及旋转矩阵的轴角表示。
+- 主要功能：
+  - **欧拉角转旋转矩阵**: 将ZYX欧拉角转换为旋转矩阵（左手坐标系）
+  - **旋转矩阵转轴角**: 将旋转矩阵转换为轴角表示（轴向量+旋转角度）
+  - **坐标系转换**: 通过反射矩阵实现左手坐标系到右手坐标系的转换
+  - **3D可视化**: 同时显示两个坐标系的旋转轴和角度
+- 核心算法：
+  - 使用变换矩阵 `T = [[1,0,0], [0,1,0], [0,0,-1]]` 进行手性转换
+  - 轴角提取采用Rodrigues公式的逆变换
+  - 特殊处理角度接近0和π的边界情况
+- 应用场景：
+  - 机器人学中的坐标系转换
+  - 计算机图形学中的旋转表示
+  - 姿态估计和控制系统
+- 示例输出：
+  ```
+  Left-hand system:  axis=[0.236, 0.409, 0.881], angle=66.45°
+  Right-hand system: axis=[-0.236, -0.409, 0.881], angle=66.45°
+  ```
+
 ## joint zero point cali
 
 ### plane arm
