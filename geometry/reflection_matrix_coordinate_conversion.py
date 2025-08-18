@@ -175,7 +175,7 @@ def visualize_axis_angle(axis_l, angle_l, axis_r, angle_r):
 
 
 def main():
-    zyx = [60.0, 30, 0]
+    zyx = [60.0, 30, 20]
     R = euler2matrix(zyx)
     print(f"R: {R}")
     R_right = hand_trans(R)
@@ -186,6 +186,20 @@ def main():
     axis_r, angle_r = matrix2AxisAngle(R_right)
     print(f"axis_l: {axis_l}, angle_l: {angle_l}")
     print(f"axis_r: {axis_r}, angle_r: {angle_r}")
+    # 测试一个定义在左手系下的向量p_left=[0.1,0.2,0.3]在经历R旋转后的分别在左手系下的结果
+    p_left = np.array([0.1, 0.2, 0.3])
+    p_left2 = R @ p_left
+    T = np.array([[1, 0, 0], [0, 1, 0], [0, 0, -1]])
+    p_right = T @ p_left
+    p_right2 = R_right @ p_right
+    print(f"p_left:  {p_left}")
+    print(f"p_right: {p_right}")
+    print(f"p_left2: {p_left2}")
+    print(f"p_right2: {p_right2}")
+    if(np.allclose(T @ p_left2, p_right2)):
+        print("转换一致!!!")
+    else:
+        print("转换不一致!!!")
 
     # 可视化轴角表示
     # visualize_axis_angle(axis_l, angle_l, axis_r, angle_r)
