@@ -125,4 +125,7 @@ time cost: 17.52 ms
 ## ml
 
 ### 自编码器
-参考ml/auto-encoder/README.md
+参见[AE实现文档](ml/auto-encoder/README.md)。
+
+### 变分自编码器
+参见[VAE实现文档](ml/VAE/README.md)。
