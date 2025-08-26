@@ -1,0 +1,67 @@
+<mujoco model="ankle_closed_loop">
+  <compiler angle="radian" coordinate="local"/>
+  <option gravity="0 0 0"/>
+
+  <worldbody>
+    <!-- 小腿主体 -->
+    <body name="ankle_top" pos="0 0 0.2">
+      <geom type="capsule" size="0.04 0.1" pos="0 0 0.2" rgba="0.7 0.7 0.7 1"/>
+      <inertial mass="5.29" pos="0 0 0" diaginertia="0.492 0.492 0.0042"/>
+
+      <!-- 脚掌（通过两个关节连接） -->
+      <body name="ankle_foot" pos="0.0 0 0.0">
+        <!-- pitch 关节 -->
+        <joint name="ankle_pitch" type="hinge" axis="0 1 0" pos="0 0 0" range="-0.5 0.5"/>
+        <!-- roll 关节 -->
+        <joint name="ankle_roll" type="hinge" axis="1 0 0" pos="0 0 0" range="-0.5 0.5"/>
+        <geom type="box" size="0.15 0.07 0.01" rgba="0.3 0.3 0.9 1"/>
+        <inertial mass="2.24" pos="0 0 0" diaginertia="0.004 0.030 0.034"/>
+        <site name="ankle_foot_site_l" pos="-0.08 0.075 0"/>
+        <site name="ankle_foot_site_r" pos="-0.08 -0.075 0"/>
+      </body>
+
+      <!-- 左侧连杆 -->
+      <body name="link_l" pos="0 0.075 0.2">
+        <joint name="ankle_l_joint" type="hinge" axis="0 1 0" pos="0 0 0" range="-1.5 1.5"/>
+        <geom type="capsule" fromto="0 0 0 -0.08 0 0" size="0.01" rgba="0.3 0.9 0.3 1"/>
+        <inertial mass="0.0419" pos="0 0 0" diaginertia="6.3e-05 6.3e-05 2.05e-06"/>
+        <!-- 球关节与脚掌闭合 -->
+        <body name="link_l2" pos="-0.08 0 0">
+          <joint name="ankle_l_joint2" type="ball" pos="0 0 0"/>
+          <geom type="capsule" fromto="0 0 0 0 0 -0.2" size="0.01" rgba="0.3 0.9 0.3 1"/>
+          <inertial mass="0.0419" pos="0 0 0" diaginertia="6.3e-05 6.3e-05 2.05e-06"/>
+          <site name="link_site_l" pos="0 0 -0.2"/>
+        </body>
+      </body>
+
+      <!-- 右侧连杆 -->
+      <body name="link_r" pos="0 -0.075 0.2">
+        <joint name="ankle_r_joint" type="hinge" axis="0 1 0" pos="0 0 0" range="-1.5 1.5"/>
+        <geom type="capsule" fromto="0 0 0 -0.08 0 0" size="0.01" rgba="0.9 0.3 0.3 1"/>
+        <inertial mass="0.0419" pos="0 0 0" diaginertia="6.3e-05 6.3e-05 2.05e-06"/>
+        <!-- 球关节与脚掌闭合 -->
+        <body name="link_r2" pos="-0.08 0 0">
+          <joint name="ankle_r_joint2" type="ball" pos="0 0 0"/>
+          <geom type="capsule" fromto="0 0 0 0 0 -0.2" size="0.01" rgba="0.9 0.3 0.3 1"/>
+          <inertial mass="0.0419" pos="0 0 0" diaginertia="6.3e-05 6.3e-05 2.05e-06"/>
+          <site name="link_site_r" pos="0 0 -0.2"/>
+        </body>
+      </body>
+    </body>
+
+  </worldbody>
+
+  <!-- 闭链约束 -->
+  <equality>
+    <connect name="connect_l" site1="link_site_l" site2="ankle_foot_site_l" />
+    <connect name="connect_r" site1="link_site_r" site2="ankle_foot_site_r" />
+  </equality>
+
+  <!-- 电机 -->
+  <actuator>
+    <motor name="ankle_r_motor" joint="ankle_r_joint" gear="50"/>
+    <motor name="ankle_l_motor" joint="ankle_l_joint" gear="50"/>
+    <motor name="ankle_pitch_motor" joint="ankle_pitch" gear="20"/>
+    <motor name="ankle_roll_motor" joint="ankle_roll" gear="20"/>
+  </actuator>
+</mujoco>
