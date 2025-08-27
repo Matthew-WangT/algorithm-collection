@@ -22,11 +22,11 @@ def euler_to_rotmat(roll, pitch, yaw):
 
 
 class AnkleInfo:
-    D = 0.15
+    D = 0.12
     d = D / 2.0
-    h1 = 0.2
-    h2 = 0.2
-    r = 0.08
+    h1 = 0.49
+    h2 = 0.37
+    r = 0.12
 
     delta_z = 0.00  # TODO: 跟十字轴的z距离
 
