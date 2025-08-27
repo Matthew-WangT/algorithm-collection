@@ -78,8 +78,7 @@ class Ankle:
         pitch = ca.SX.sym('pitch')
         phi_l, phi_r = self.inv(pitch, roll)
         jac = ca.jacobian(ca.vertcat(phi_l, phi_r), ca.vertcat(pitch, roll))
-        print("jac:", jac)
-        func = ca.Function('jacobian', [roll, pitch], [jac])
+        func = ca.Function('jacobian', [pitch, roll], [jac])
         return func
 
     def jacobian(self, roll, pitch):
