@@ -2,16 +2,15 @@
 
 This repository contains a collection of algorithms and data structures implemented in various programming languages. Maybe you'll find them useful.
 
-# List
-## geometry
-### sat.py
+# 1. geometry
+## 1.1 sat.py
 - *Summary*: 分离轴定理（SAT）是一种用于检测两个凸多边形是否相交的算法。它的原理是，如果两个凸多边形不相交，那么一定存在至少一个轴，使得这两个多边形在该轴上的正交投影不重叠。SAT算法通过检查所有可能的分离轴来确定两个多边形是否相交。这些分离轴通常是多边形边的法线。
 
 <p align="center">
     <img src="img/sat.png" width="300">
 </p>
 
-### reflection_matrix_coordinate_conversion.py
+## 1.2 reflection_matrix_coordinate_conversion.py
 - *Summary*: 坐标系转换与轴角表示可视化工具。该程序演示了左手坐标系与右手坐标系之间的转换，以及旋转矩阵的轴角表示。
 - 主要功能：
   - **欧拉角转旋转矩阵**: 将ZYX欧拉角转换为旋转矩阵（左手坐标系）
@@ -32,10 +31,13 @@ This repository contains a collection of algorithms and data structures implemen
   Right-hand system: axis=[-0.236, -0.409, 0.881], angle=66.45°
   ```
 
-## joint zero point cali
+## 1.3 ankle_solver
+踝关节转换计算，参见：[ankle_solver](geometry/ankle_solver/readme.md)
 
-### plane arm
-#### R2Descent.py
+# 2. joint zero point cali
+
+## 2.1 plane arm
+### R2Descent.py
 - *Summary*: 2R机器人关节零点标定,使用梯度下降法
 - 目的：用最简单的例子验证手臂零点偏差标定可行性
 - 手段：casadi计算FK以及雅阁比+梯度下降法迭代求解
@@ -66,7 +68,7 @@ This repository contains a collection of algorithms and data structures implemen
 	 - Pros:  实现简单，直接用梯度下降法
 	 - Cons: 只使用一次测量，可能存在误差
 
-#### R3LM.py
+### R3LM.py
 - *Summary*: 3R机器人关节零点标定,使用LM算法
 - 与RR方法类似，不过迭代过程使用LM方法，可以得到以下结果：
 ```bash
@@ -89,7 +91,7 @@ q bias:  [0.208774, 0.269489, 0.145744]
 
 - 可见标定值与真值存在差异，对于RRR机械臂而言，一次测量并不能标定出正确的零点.
 
-#### R3Nlopt.py
+### R3Nlopt.py
 - *Summary*: 3R机器人关节零点标定,使用nlopt优化
 - 为方便拓展，我们使用`nlopt`进行求解：
 - 具体步骤：
@@ -108,24 +110,24 @@ time cost: 17.52 ms
     <img src="img/R3-cali-nlopt-vis.png" width="300">
 </p>
 
-### arm
-#### arm_joint_cali.py
+## 2.2 arm
+### arm_joint_cali.py
 - *Summary*: 机械臂关节零点标定,使用nlopt优化
 
-#### arm_kinematics.py
+### arm_kinematics.py
 - *Summary*: 机械臂运动学求解
 
-## robot config space
-### rr_robot_config_space_interactive.py
+# 3. robot config space
+## 3.1 rr_robot_config_space_interactive.py
 - *Summary*: 2R机械臂配置空间可视化
 <p align="center">
     <img src="img/RR_config_space.jpg" width="500">
 </p>
 
-## ml
+# 4. ml
 
-### 自编码器
+## 4.1 自编码器
 参见[AE实现文档](ml/auto-encoder/README.md)。
 
-### 变分自编码器
+## 4.2 变分自编码器
 参见[VAE实现文档](ml/VAE/README.md)。
