@@ -5,7 +5,7 @@
 
 - 逆向运动学：参照论文方法构造
 <p align="center">
-    <img src="img/ankle_ik.png" width="300">
+    <img src="img/ankle_ik.jpg" width="300">
 </p>
 
 - 正向运动学：基于逆向运动学，使用CasADi计算雅可比$J$，再基于$J$使用迭代方法求解正向运动学问题。
