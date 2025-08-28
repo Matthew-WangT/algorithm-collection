@@ -9,10 +9,14 @@ PLOT_CONFIG = {
 }
 
 # 使用说明:
+# 可视化配置:
 # 1. 修改 '3d_mode' 为 'scatter' 可显示原始数据点
 # 2. 修改 '3d_mode' 为 'surface' 可显示插值表面
 # 3. 'grid_resolution' 越高表面越平滑，但计算时间越长
 # 4. 'interpolation' 方法影响表面平滑度: cubic > linear > nearest
+#
+# 数值计算:
+# 雅可比矩阵求逆使用专用2x2解析公式，这是最快的方法
 
 def to_float(casadi_val):
     """将CasADi类型转换为Python浮点数"""
@@ -25,6 +29,34 @@ def to_numpy(casadi_val):
     if isinstance(casadi_val, (ca.DM, ca.SX, ca.MX)):
         return np.array(casadi_val).flatten()
     return np.array(casadi_val).flatten()
+
+
+
+def fast_2x2_inverse(A):
+    """
+    专门针对2x2矩阵的最快求逆方法
+    使用解析公式: A^(-1) = (1/det) * [[d, -b], [-c, a]]
+    """
+    if A.shape != (2, 2):
+        raise ValueError("This function is only for 2x2 matrices")
+    
+    a, b = A[0, 0], A[0, 1]
+    c, d = A[1, 0], A[1, 1]
+    
+    # 计算行列式
+    det = a * d - b * c
+    
+    # 检查奇异性
+    if abs(det) < 1e-14:
+        print("Warning: Matrix is nearly singular, using pseudo-inverse")
+        return np.linalg.pinv(A)
+    
+    # 直接计算逆矩阵
+    det_inv = 1.0 / det
+    return np.array([[d * det_inv, -b * det_inv],
+                     [-c * det_inv, a * det_inv]])
+
+
 
 def euler_to_rotmat(roll, pitch, yaw):
     """
@@ -106,7 +138,8 @@ class Ankle:
         alpha = 0.9
         while err > 1e-4 and iter_count < 100:
             J = np.array(jac(q_j[0], q_j[1]))  # 转换为numpy数组~
-            J_inv = np.linalg.inv(J)
+            # 使用最快的2x2矩阵求逆方法
+            J_inv = fast_2x2_inverse(J)
             delta_q_m = q_m - q_m0
             q_j = q_j + alpha * J_inv @ delta_q_m
             err = np.linalg.norm(delta_q_m)
