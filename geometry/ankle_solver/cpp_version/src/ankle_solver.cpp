@@ -1,0 +1,127 @@
+#include "include/ankle_solver.h"
+#include <stdexcept>
+#include <cstring>
+#include <iostream>
+
+AnkleSolver::AnkleSolver() : iw_(nullptr), w_(nullptr) {
+    initialize_workspace();
+}
+
+AnkleSolver::~AnkleSolver() {
+    cleanup_workspace();
+}
+
+void AnkleSolver::initialize_workspace() {
+    // CasADi 生成的函数通常不需要额外的工作内存
+    // 但我们仍然初始化指针为 nullptr
+    iw_ = nullptr;
+    w_ = nullptr;
+}
+
+void AnkleSolver::cleanup_workspace() {
+    // 清理工作内存（如果有的话）
+    if (iw_) {
+        delete[] iw_;
+        iw_ = nullptr;
+    }
+    if (w_) {
+        delete[] w_;
+        w_ = nullptr;
+    }
+}
+
+Eigen::Vector2d AnkleSolver::inverse_kinematics(double pitch, double roll) {
+    // 准备输入参数
+    casadi_real input_pitch = pitch;
+    casadi_real input_roll = roll;
+    const casadi_real* arg[2] = {&input_pitch, &input_roll};
+    
+    // 准备输出结果
+    casadi_real phi_l, phi_r;
+    casadi_real* res[2] = {&phi_l, &phi_r};
+    
+    // 调用 CasADi 生成的逆运动学函数
+    int result = ankle_inv(arg, res, iw_, w_, 0);
+    
+    if (result != 0) {
+        throw std::runtime_error("踝关节逆运动学计算失败，错误代码: " + std::to_string(result));
+    }
+    
+    return Eigen::Vector2d(phi_l, phi_r);
+}
+
+Eigen::Vector2d AnkleSolver::inverse_kinematics(const Eigen::Vector2d& pose) {
+    return inverse_kinematics(pose(0), pose(1));
+}
+
+Eigen::Matrix2d AnkleSolver::jacobian(double pitch, double roll) {
+    // 准备输入参数
+    casadi_real input_pitch = pitch;
+    casadi_real input_roll = roll;
+    const casadi_real* arg[2] = {&input_pitch, &input_roll};
+    
+    // 准备输出结果 (2x2 矩阵，按列存储)
+    casadi_real jacobian_data[4];
+    casadi_real* res[1] = {jacobian_data};
+    
+    // 调用 CasADi 生成的雅可比矩阵函数
+    int result = ankle_jacobian(arg, res, iw_, w_, 0);
+    
+    if (result != 0) {
+        throw std::runtime_error("踝关节雅可比矩阵计算失败，错误代码: " + std::to_string(result));
+    }
+    
+    // 将结果转换为 Eigen 矩阵格式 (CasADi 按列存储)
+    Eigen::Matrix2d jac;
+    jac(0, 0) = jacobian_data[0];  // ∂phi_l/∂pitch
+    jac(1, 0) = jacobian_data[1];  // ∂phi_r/∂pitch
+    jac(0, 1) = jacobian_data[2];  // ∂phi_l/∂roll
+    jac(1, 1) = jacobian_data[3];  // ∂phi_r/∂roll
+    
+    return jac;
+}
+
+Eigen::Matrix2d AnkleSolver::jacobian(const Eigen::Vector2d& pose) {
+    return jacobian(pose(0), pose(1));
+}
+
+Eigen::MatrixXd AnkleSolver::batch_inverse_kinematics(const Eigen::MatrixXd& poses) {
+    if (poses.rows() != 2) {
+        throw std::invalid_argument("输入矩阵必须是 2×N 格式 (每列为 [pitch, roll])");
+    }
+    
+    int n_poses = poses.cols();
+    Eigen::MatrixXd results(2, n_poses);
+    
+    for (int i = 0; i < n_poses; ++i) {
+        try {
+            Eigen::Vector2d result = inverse_kinematics(poses(0, i), poses(1, i));
+            results.col(i) = result;
+        } catch (const std::runtime_error& e) {
+            throw std::runtime_error("批量计算在索引 " + std::to_string(i) + " 处失败: " + e.what());
+        }
+    }
+    
+    return results;
+}
+
+std::vector<Eigen::Matrix2d> AnkleSolver::batch_jacobian(const Eigen::MatrixXd& poses) {
+    if (poses.rows() != 2) {
+        throw std::invalid_argument("输入矩阵必须是 2×N 格式 (每列为 [pitch, roll])");
+    }
+    
+    int n_poses = poses.cols();
+    std::vector<Eigen::Matrix2d> results;
+    results.reserve(n_poses);
+    
+    for (int i = 0; i < n_poses; ++i) {
+        try {
+            Eigen::Matrix2d jac = jacobian(poses(0, i), poses(1, i));
+            results.push_back(jac);
+        } catch (const std::runtime_error& e) {
+            throw std::runtime_error("批量雅可比计算在索引 " + std::to_string(i) + " 处失败: " + e.what());
+        }
+    }
+    
+    return results;
+}
