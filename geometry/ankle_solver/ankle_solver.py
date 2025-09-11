@@ -1,5 +1,6 @@
 import casadi as ca
 import numpy as np
+import os
 
 # 可视化配置选项
 PLOT_CONFIG = {
@@ -189,6 +190,47 @@ class Ankle:
             return np.array(jac)
         return jac
 
+    def export_cpp(self, out_dir: str, prefix: str = "ankle"):
+        """
+        将 IK 与 Jacobian 导出为可由 C++ 编译使用的 C 源码与头文件。
+        生成文件: {out_dir}/{prefix}_functions.c 与 {out_dir}/{prefix}_functions.h
+
+        用法示例:
+            ankle.export_cpp("./build", prefix="ankle")
+        """
+        os.makedirs(out_dir, exist_ok=True)
+
+        # 符号变量
+        pitch = ca.SX.sym('pitch')
+        roll = ca.SX.sym('roll')
+
+        # IK 与 Jacobian
+        phi_l, phi_r = self.inv(pitch, roll)
+        J = ca.jacobian(ca.vertcat(phi_l, phi_r), ca.vertcat(pitch, roll))
+
+        f_inv = ca.Function(f"{prefix}_inv", [pitch, roll], [phi_l, phi_r],
+                            ["pitch", "roll"], ["phi_l", "phi_r"])
+        f_jac = ca.Function(f"{prefix}_jacobian", [pitch, roll], [J],
+                            ["pitch", "roll"], ["J"])
+
+        # 代码生成（CasADi 生成 C 代码，可被 C++ 直接编译链接）
+        # 注意：CodeGenerator 的参数必须是一个“模块名”，不能包含路径或扩展名
+        module_name = f"{prefix}_functions"
+        cg = ca.CodeGenerator(module_name)
+        cg.add(f_inv)
+        cg.add(f_jac)
+        # 在指定目录内生成文件
+        cwd = os.getcwd()
+        try:
+            os.chdir(out_dir)
+            cg.generate()
+        finally:
+            os.chdir(cwd)
+
+        # 返回生成的 c 文件路径
+        c_path = os.path.join(out_dir, f"{module_name}.c")
+        return c_path
+
 
 def __main__():
     info = AnkleInfo()
@@ -210,6 +252,8 @@ def __main__():
 
     print("phi_l(-0.2, 0) (float):", ankle.inv(-0.2, 0, return_float=True))
     print("phi_l(0, -0.2) (float):", ankle.inv(0.0, -0.2, return_float=True))
+
+    ankle.export_cpp("./cpp_version/autogen_code", prefix="ankle")
     
     # 测试jacobian输出
     jac_casadi = ankle.jacobian(0.1, 0.2)
