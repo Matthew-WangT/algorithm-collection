@@ -3,6 +3,7 @@
 
 #include <Eigen/Dense>
 #include <vector>
+#include <tuple>
 
 // CasADi 数据类型定义
 #ifndef casadi_real
@@ -90,6 +91,60 @@ public:
      * @return std::vector<Eigen::Matrix2d> 对应的雅可比矩阵数组
      */
     std::vector<Eigen::Matrix2d> batch_jacobian(const Eigen::MatrixXd& poses);
+    
+    /**
+     * @brief 踝关节正向运动学求解
+     * 
+     * 根据给定的左右电机角度，通过雅可比迭代方法求解俯仰角和横滚角
+     * 
+     * @param phi_l 左电机角度 (弧度)
+     * @param phi_r 右电机角度 (弧度)
+     * @param initial_guess 初始猜测值 [pitch, roll] (弧度)
+     * @param max_iterations 最大迭代次数 (默认100)
+     * @param tolerance 收敛容差 (默认1e-6)
+     * @param step_size 步长因子 (默认0.9)
+     * @return std::tuple<Eigen::Vector2d, int, double> [pose, iterations, error]
+     */
+    std::tuple<Eigen::Vector2d, int, double> forward_kinematics(
+        double phi_l, double phi_r, 
+        const Eigen::Vector2d& initial_guess = Eigen::Vector2d::Zero(),
+        int max_iterations = 100,
+        double tolerance = 1e-6,
+        double step_size = 0.9);
+    
+    /**
+     * @brief 踝关节正向运动学求解 (Eigen输入)
+     * 
+     * @param motors Eigen::Vector2d [phi_l, phi_r] 左右电机角度 (弧度)
+     * @param initial_guess 初始猜测值 [pitch, roll] (弧度)
+     * @param max_iterations 最大迭代次数 (默认100)
+     * @param tolerance 收敛容差 (默认1e-6)
+     * @param step_size 步长因子 (默认0.9)
+     * @return std::tuple<Eigen::Vector2d, int, double> [pose, iterations, error]
+     */
+    std::tuple<Eigen::Vector2d, int, double> forward_kinematics(
+        const Eigen::Vector2d& motors,
+        const Eigen::Vector2d& initial_guess = Eigen::Vector2d::Zero(),
+        int max_iterations = 100,
+        double tolerance = 1e-6,
+        double step_size = 0.9);
+    
+    /**
+     * @brief 批量正向运动学求解
+     * 
+     * @param motors_batch Eigen::MatrixXd (2×N) 每列为一个 [phi_l, phi_r] 电机角度
+     * @param initial_guesses Eigen::MatrixXd (2×N) 每列为对应的初始猜测值，可选
+     * @param max_iterations 最大迭代次数 (默认100)
+     * @param tolerance 收敛容差 (默认1e-6)
+     * @param step_size 步长因子 (默认0.9)
+     * @return std::tuple<Eigen::MatrixXd, Eigen::VectorXi, Eigen::VectorXd> [poses, iterations, errors]
+     */
+    std::tuple<Eigen::MatrixXd, Eigen::VectorXi, Eigen::VectorXd> batch_forward_kinematics(
+        const Eigen::MatrixXd& motors_batch,
+        const Eigen::MatrixXd& initial_guesses = Eigen::MatrixXd(),
+        int max_iterations = 100,
+        double tolerance = 1e-6,
+        double step_size = 0.9);
 
 private:
     // 工作内存指针，用于 CasADi 函数调用
@@ -105,6 +160,15 @@ private:
      * @brief 清理工作内存
      */
     void cleanup_workspace();
+    
+    /**
+     * @brief 快速计算2x2矩阵的逆
+     * 
+     * @param matrix 2x2矩阵
+     * @return Eigen::Matrix2d 逆矩阵
+     * @throws std::runtime_error 如果矩阵奇异
+     */
+    Eigen::Matrix2d fast_2x2_inverse(const Eigen::Matrix2d& matrix);
 };
 
 #endif // ANKLE_SOLVER_H

@@ -125,3 +125,138 @@ std::vector<Eigen::Matrix2d> AnkleSolver::batch_jacobian(const Eigen::MatrixXd& 
     
     return results;
 }
+
+Eigen::Matrix2d AnkleSolver::fast_2x2_inverse(const Eigen::Matrix2d& matrix) {
+    // 计算行列式
+    double det = matrix(0, 0) * matrix(1, 1) - matrix(0, 1) * matrix(1, 0);
+    
+    if (std::abs(det) < 1e-12) {
+        throw std::runtime_error("矩阵奇异，无法求逆");
+    }
+    
+    // 2x2矩阵的逆矩阵公式
+    Eigen::Matrix2d inverse;
+    inverse(0, 0) =  matrix(1, 1) / det;
+    inverse(0, 1) = -matrix(0, 1) / det;
+    inverse(1, 0) = -matrix(1, 0) / det;
+    inverse(1, 1) =  matrix(0, 0) / det;
+    
+    return inverse;
+}
+
+std::tuple<Eigen::Vector2d, int, double> AnkleSolver::forward_kinematics(
+    double phi_l, double phi_r, 
+    const Eigen::Vector2d& initial_guess,
+    int max_iterations,
+    double tolerance,
+    double step_size) {
+    
+    Eigen::Vector2d motors(phi_l, phi_r);
+    return forward_kinematics(motors, initial_guess, max_iterations, tolerance, step_size);
+}
+
+std::tuple<Eigen::Vector2d, int, double> AnkleSolver::forward_kinematics(
+    const Eigen::Vector2d& motors,
+    const Eigen::Vector2d& initial_guess,
+    int max_iterations,
+    double tolerance,
+    double step_size) {
+    
+    // 初始化
+    Eigen::Vector2d pose = initial_guess;  // [pitch, roll]
+    Eigen::Vector2d target_motors = motors;  // [phi_l, phi_r]
+    
+    // 计算初始误差
+    Eigen::Vector2d current_motors = inverse_kinematics(pose);
+    Eigen::Vector2d error_vector = target_motors - current_motors;
+    double error = error_vector.norm();
+    
+    int iterations = 0;
+    
+    while (error > tolerance && iterations < max_iterations) {
+        // 计算当前姿态的雅可比矩阵
+        Eigen::Matrix2d J = jacobian(pose);
+        
+        try {
+            // 计算雅可比矩阵的逆
+            Eigen::Matrix2d J_inv = fast_2x2_inverse(J);
+            
+            // 更新姿态
+            Eigen::Vector2d delta_pose = step_size * J_inv * error_vector;
+            pose += delta_pose;
+            
+            // 重新计算误差
+            current_motors = inverse_kinematics(pose);
+            error_vector = target_motors - current_motors;
+            error = error_vector.norm();
+            
+            iterations++;
+            
+        } catch (const std::runtime_error& e) {
+            // 如果雅可比矩阵奇异，尝试使用伪逆
+            Eigen::Matrix2d J_pinv = J.completeOrthogonalDecomposition().pseudoInverse();
+            
+            Eigen::Vector2d delta_pose = step_size * J_pinv * error_vector;
+            pose += delta_pose;
+            
+            current_motors = inverse_kinematics(pose);
+            error_vector = target_motors - current_motors;
+            error = error_vector.norm();
+            
+            iterations++;
+        }
+    }
+    
+    return std::make_tuple(pose, iterations, error);
+}
+
+std::tuple<Eigen::MatrixXd, Eigen::VectorXi, Eigen::VectorXd> AnkleSolver::batch_forward_kinematics(
+    const Eigen::MatrixXd& motors_batch,
+    const Eigen::MatrixXd& initial_guesses,
+    int max_iterations,
+    double tolerance,
+    double step_size) {
+    
+    if (motors_batch.rows() != 2) {
+        throw std::invalid_argument("输入矩阵必须是 2×N 格式 (每列为 [phi_l, phi_r])");
+    }
+    
+    int n_poses = motors_batch.cols();
+    
+    // 检查初始猜测值
+    Eigen::MatrixXd guesses;
+    if (initial_guesses.size() == 0) {
+        // 如果没有提供初始猜测值，使用零向量
+        guesses = Eigen::MatrixXd::Zero(2, n_poses);
+    } else {
+        if (initial_guesses.rows() != 2 || initial_guesses.cols() != n_poses) {
+            throw std::invalid_argument("初始猜测值矩阵必须是 2×N 格式，与输入矩阵维度匹配");
+        }
+        guesses = initial_guesses;
+    }
+    
+    // 准备输出
+    Eigen::MatrixXd poses(2, n_poses);
+    Eigen::VectorXi iterations(n_poses);
+    Eigen::VectorXd errors(n_poses);
+    
+    // 逐个求解
+    for (int i = 0; i < n_poses; ++i) {
+        try {
+            Eigen::Vector2d motors = motors_batch.col(i);
+            Eigen::Vector2d initial_guess = guesses.col(i);
+            
+            auto [pose, iter, error] = forward_kinematics(
+                motors, initial_guess, max_iterations, tolerance, step_size);
+            
+            poses.col(i) = pose;
+            iterations(i) = iter;
+            errors(i) = error;
+            
+        } catch (const std::exception& e) {
+            throw std::runtime_error("批量正向运动学计算在索引 " + std::to_string(i) + " 处失败: " + e.what());
+        }
+    }
+    
+    return std::make_tuple(poses, iterations, errors);
+}

@@ -108,6 +108,105 @@ int main() {
             }
         }
         
+        // 测试正向运动学
+        std::cout << "\n6. 正向运动学测试:" << std::endl;
+        
+        // 使用已知的逆运动学结果进行测试
+        double test_pitch = 0.1;
+        double test_roll = 0.05;
+        
+        // 先计算逆运动学得到电机角度
+        auto motors = solver.inverse_kinematics(test_pitch, test_roll);
+        std::cout << "原始姿态: pitch=" << test_pitch << ", roll=" << test_roll << std::endl;
+        std::cout << "对应电机角度: phi_l=" << motors(0) << ", phi_r=" << motors(1) << std::endl;
+        
+        // 使用正向运动学恢复姿态
+        Eigen::Vector2d initial_guess(0.0, 0.0);  // 零初始猜测
+        auto [recovered_pose, iterations, error] = solver.forward_kinematics(
+            motors(0), motors(1), initial_guess);
+        
+        std::cout << "正向运动学恢复的姿态: pitch=" << recovered_pose(0) 
+                  << ", roll=" << recovered_pose(1) << std::endl;
+        std::cout << "迭代次数: " << iterations << ", 最终误差: " << error << std::endl;
+        
+        // 计算恢复精度
+        double pitch_error = std::abs(test_pitch - recovered_pose(0));
+        double roll_error = std::abs(test_roll - recovered_pose(1));
+        std::cout << "恢复精度: pitch误差=" << pitch_error 
+                  << ", roll误差=" << roll_error << std::endl;
+        
+        // 测试 Eigen 输入版本
+        std::cout << "\n7. 正向运动学 (Eigen输入) 测试:" << std::endl;
+        auto [recovered_pose2, iterations2, error2] = solver.forward_kinematics(
+            motors, initial_guess);
+        
+        print_vector(recovered_pose2, "Eigen输入版本恢复姿态");
+        std::cout << "迭代次数: " << iterations2 << ", 最终误差: " << error2 << std::endl;
+        
+        // 测试批量正向运动学
+        std::cout << "\n8. 批量正向运动学测试:" << std::endl;
+        
+        // 使用之前的批量逆运动学结果
+        auto [batch_poses, batch_iterations, batch_errors] = solver.batch_forward_kinematics(
+            batch_results);
+        
+        std::cout << "批量正向运动学结果:" << std::endl;
+        std::cout << std::setw(8) << "phi_l" << std::setw(8) << "phi_r" 
+                  << std::setw(10) << "pitch" << std::setw(10) << "roll"
+                  << std::setw(6) << "iter" << std::setw(12) << "error" << std::endl;
+        std::cout << std::string(54, '-') << std::endl;
+        
+        for (int i = 0; i < batch_results.cols(); ++i) {
+            std::cout << std::setw(8) << batch_results(0, i)
+                      << std::setw(8) << batch_results(1, i)
+                      << std::setw(10) << batch_poses(0, i)
+                      << std::setw(10) << batch_poses(1, i)
+                      << std::setw(6) << batch_iterations(i)
+                      << std::setw(12) << batch_errors(i) << std::endl;
+        }
+        
+        // 验证正向-逆向运动学的一致性
+        std::cout << "\n9. 正向-逆向运动学一致性验证:" << std::endl;
+        std::vector<std::pair<double, double>> test_cases = {
+            {0.0, 0.0},
+            {0.1, 0.05},
+            {-0.05, 0.1},
+            {-0.90, 0.90},
+            {-0.91, 0.34},
+            {-0.41, 0.93},
+            {0.15, -0.08}
+        };
+        
+        std::cout << std::setw(8) << "pitch" << std::setw(8) << "roll"
+                  << std::setw(10) << "phi_l" << std::setw(10) << "phi_r"
+                  << std::setw(12) << "rec_pitch" << std::setw(12) << "rec_roll"
+                  << std::setw(8) << "p_err" << std::setw(8) << "r_err" << std::endl;
+        std::cout << std::string(80, '-') << std::endl;
+        
+        for (const auto& test_case : test_cases) {
+            double orig_pitch = test_case.first;
+            double orig_roll = test_case.second;
+            
+            // 逆运动学: 姿态 -> 电机角度
+            auto test_motors = solver.inverse_kinematics(orig_pitch, orig_roll);
+            
+            // 正向运动学: 电机角度 -> 姿态
+            auto [rec_pose, iter, err] = solver.forward_kinematics(
+                test_motors, Eigen::Vector2d::Zero());
+            
+            double p_error = std::abs(orig_pitch - rec_pose(0));
+            double r_error = std::abs(orig_roll - rec_pose(1));
+            
+            std::cout << std::setw(8) << orig_pitch
+                      << std::setw(8) << orig_roll
+                      << std::setw(10) << test_motors(0)
+                      << std::setw(10) << test_motors(1)
+                      << std::setw(12) << rec_pose(0)
+                      << std::setw(12) << rec_pose(1)
+                      << std::setw(8) << p_error
+                      << std::setw(8) << r_error << std::endl;
+        }
+        
         std::cout << "\n=== 测试完成 ===" << std::endl;
         
     } catch (const std::exception& e) {
