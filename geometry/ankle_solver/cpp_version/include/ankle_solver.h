@@ -146,6 +146,42 @@ public:
         double tolerance = 1e-6,
         double step_size = 0.9);
 
+    /**
+     * @brief 关节速度映射到电机速度
+     * 
+     * @param joint_pos Eigen::Vector2d [pitch, roll] 关节位置 (弧度)
+     * @param joint_velocity Eigen::Vector2d [pitch, roll] 关节速度 (弧度/秒)
+     * @return Eigen::Vector2d [phi_l, phi_r] 电机速度 (弧度/秒)
+     */
+    Eigen::Vector2d velocityJoint2motor(const Eigen::Vector2d& joint_pos, const Eigen::Vector2d& joint_velocity);
+
+    /**
+     * @brief 电机速度映射到关节速度
+     * 
+     * @param joint_pos Eigen::Vector2d [pitch, roll] 关节位置 (弧度)
+     * @param motor_velocity Eigen::Vector2d [phi_l, phi_r] 电机速度 (弧度/秒)
+     * @return Eigen::Vector2d [pitch, roll] 关节速度 (弧度/秒)
+     */
+    Eigen::Vector2d velocityJMotor2joint(const Eigen::Vector2d& joint_pos, const Eigen::Vector2d& motor_velocity);
+    
+    /**
+     * @brief 关节扭矩映射到电机扭矩
+     * 
+     * @param joint_pos Eigen::Vector2d [pitch, roll] 关节位置 (弧度)
+     * @param joint_torque Eigen::Vector2d [pitch, roll] 关节扭矩 (牛顿米)
+     * @return Eigen::Vector2d [phi_l, phi_r] 电机扭矩 (牛顿米)
+     */
+    Eigen::Vector2d torqueJoint2motor(const Eigen::Vector2d& joint_pos, const Eigen::Vector2d& joint_torque);
+
+    /**
+     * @brief 电机扭矩映射到关节扭矩
+     * 
+     * @param joint_pos Eigen::Vector2d [pitch, roll] 关节位置 (弧度)
+     * @param joint_torque Eigen::Vector2d [pitch, roll] 关节扭矩 (牛顿米)
+     * @return Eigen::Vector2d [pitch, roll] 关节扭矩 (牛顿米)
+     */
+    Eigen::Vector2d torqueMotor2joint(const Eigen::Vector2d& joint_pos, const Eigen::Vector2d& joint_torque);
+
 private:
     // 工作内存指针，用于 CasADi 函数调用
     casadi_int* iw_;

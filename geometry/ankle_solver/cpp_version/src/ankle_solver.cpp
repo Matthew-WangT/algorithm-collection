@@ -260,3 +260,25 @@ std::tuple<Eigen::MatrixXd, Eigen::VectorXi, Eigen::VectorXd> AnkleSolver::batch
     
     return std::make_tuple(poses, iterations, errors);
 }
+
+Eigen::Vector2d AnkleSolver::velocityJoint2motor(const Eigen::Vector2d& joint_pos, const Eigen::Vector2d& joint_velocity) {
+    Eigen::Matrix2d J = jacobian(joint_pos);
+    return J * joint_velocity;
+}
+
+Eigen::Vector2d AnkleSolver::velocityJMotor2joint(const Eigen::Vector2d& joint_pos, const Eigen::Vector2d& motor_velocity) {
+    Eigen::Matrix2d J = jacobian(joint_pos);
+    Eigen::Matrix2d J_inv = fast_2x2_inverse(J);
+    return J_inv * motor_velocity;
+}
+
+Eigen::Vector2d AnkleSolver::torqueJoint2motor(const Eigen::Vector2d& joint_pos, const Eigen::Vector2d& joint_torque) {
+    Eigen::Matrix2d J = jacobian(joint_pos);
+    Eigen::Matrix2d J_inv = fast_2x2_inverse(J);
+    return J_inv.transpose() * joint_torque;
+}
+
+Eigen::Vector2d AnkleSolver::torqueMotor2joint(const Eigen::Vector2d& joint_pos, const Eigen::Vector2d& motor_torque) {
+    Eigen::Matrix2d J = jacobian(joint_pos);
+    return J.transpose() * motor_torque;
+}
