@@ -3,11 +3,11 @@
 #include <iomanip>
 #include <cmath>
 
-void print_vector(const Eigen::Vector2d& vec, const std::string& name) {
+void printVector(const Eigen::Vector2d& vec, const std::string& name) {
     std::cout << name << ": [" << std::setw(10) << vec(0) << ", " << std::setw(10) << vec(1) << "]" << std::endl;
 }
 
-void print_matrix(const Eigen::Matrix2d& matrix, const std::string& name) {
+void printMatrix(const Eigen::Matrix2d& matrix, const std::string& name) {
     std::cout << name << ":" << std::endl;
     std::cout << std::fixed << std::setprecision(6);
     for (int i = 0; i < matrix.rows(); ++i) {
@@ -34,22 +34,22 @@ int main() {
         
         std::cout << "输入: pitch = " << pitch << " rad, roll = " << roll << " rad" << std::endl;
         
-        auto ik_result = solver.inverse_kinematics(pitch, roll);
-        print_vector(ik_result, "输出 [phi_l, phi_r]");
+        auto ik_result = solver.inverseKinematics(pitch, roll);
+        printVector(ik_result, "输出 [phi_l, phi_r]");
         
         // 测试 Eigen 输入版本
         Eigen::Vector2d pose(pitch, roll);
-        auto ik_result_eigen = solver.inverse_kinematics(pose);
-        print_vector(ik_result_eigen, "Eigen输入版本结果");
+        auto ik_result_eigen = solver.inverseKinematics(pose);
+        printVector(ik_result_eigen, "Eigen输入版本结果");
         
         // 测试雅可比矩阵
         std::cout << "\n2. 雅可比矩阵测试:" << std::endl;
         auto jac = solver.jacobian(pitch, roll);
-        print_matrix(jac, "雅可比矩阵 (2x2)");
+        printMatrix(jac, "雅可比矩阵 (2x2)");
         
         // 测试 Eigen 输入版本的雅可比
         auto jac_eigen = solver.jacobian(pose);
-        print_matrix(jac_eigen, "Eigen输入版本雅可比");
+        printMatrix(jac_eigen, "Eigen输入版本雅可比");
         
         // 测试批量计算
         std::cout << "\n3. 批量逆运动学测试:" << std::endl;
@@ -61,7 +61,7 @@ int main() {
         poses.col(2) << 0.2, -0.05;
         poses.col(3) << -0.1, 0.1;
         
-        auto batch_results = solver.batch_inverse_kinematics(poses);
+        auto batch_results = solver.batchInverseKinematics(poses);
         
         std::cout << "批量计算结果:" << std::endl;
         std::cout << std::setw(8) << "pitch" << std::setw(8) << "roll" 
@@ -77,11 +77,11 @@ int main() {
         
         // 测试批量雅可比计算
         std::cout << "\n4. 批量雅可比矩阵测试:" << std::endl;
-        auto batch_jacobians = solver.batch_jacobian(poses);
+        auto batch_jacobians = solver.batchJacobian(poses);
         
         for (int i = 0; i < poses.cols(); ++i) {
             std::cout << "姿态 " << i << ": [" << poses(0, i) << ", " << poses(1, i) << "]" << std::endl;
-            print_matrix(batch_jacobians[i], "雅可比矩阵");
+            printMatrix(batch_jacobians[i], "雅可比矩阵");
             std::cout << std::endl;
         }
         
@@ -96,7 +96,7 @@ int main() {
         
         for (const auto& case_test : boundary_cases) {
             try {
-                auto result = solver.inverse_kinematics(case_test.first, case_test.second);
+                auto result = solver.inverseKinematics(case_test.first, case_test.second);
                 std::cout << "pitch=" << std::setw(6) << case_test.first 
                           << ", roll=" << std::setw(6) << case_test.second
                           << " -> phi_l=" << std::setw(8) << result(0)
@@ -116,13 +116,13 @@ int main() {
         double test_roll = 0.05;
         
         // 先计算逆运动学得到电机角度
-        auto motors = solver.inverse_kinematics(test_pitch, test_roll);
+        auto motors = solver.inverseKinematics(test_pitch, test_roll);
         std::cout << "原始姿态: pitch=" << test_pitch << ", roll=" << test_roll << std::endl;
         std::cout << "对应电机角度: phi_l=" << motors(0) << ", phi_r=" << motors(1) << std::endl;
         
         // 使用正向运动学恢复姿态
         Eigen::Vector2d initial_guess(0.0, 0.0);  // 零初始猜测
-        auto [recovered_pose, iterations, error] = solver.forward_kinematics(
+        auto [recovered_pose, iterations, error] = solver.forwardKinematics(
             motors(0), motors(1), initial_guess);
         
         std::cout << "正向运动学恢复的姿态: pitch=" << recovered_pose(0) 
@@ -137,17 +137,17 @@ int main() {
         
         // 测试 Eigen 输入版本
         std::cout << "\n7. 正向运动学 (Eigen输入) 测试:" << std::endl;
-        auto [recovered_pose2, iterations2, error2] = solver.forward_kinematics(
+        auto [recovered_pose2, iterations2, error2] = solver.forwardKinematics(
             motors, initial_guess);
         
-        print_vector(recovered_pose2, "Eigen输入版本恢复姿态");
+        printVector(recovered_pose2, "Eigen输入版本恢复姿态");
         std::cout << "迭代次数: " << iterations2 << ", 最终误差: " << error2 << std::endl;
         
         // 测试批量正向运动学
         std::cout << "\n8. 批量正向运动学测试:" << std::endl;
         
         // 使用之前的批量逆运动学结果
-        auto [batch_poses, batch_iterations, batch_errors] = solver.batch_forward_kinematics(
+        auto [batch_poses, batch_iterations, batch_errors] = solver.batchForwardKinematics(
             batch_results);
         
         std::cout << "批量正向运动学结果:" << std::endl;
@@ -188,10 +188,10 @@ int main() {
             double orig_roll = test_case.second;
             
             // 逆运动学: 姿态 -> 电机角度
-            auto test_motors = solver.inverse_kinematics(orig_pitch, orig_roll);
+            auto test_motors = solver.inverseKinematics(orig_pitch, orig_roll);
             
             // 正向运动学: 电机角度 -> 姿态
-            auto [rec_pose, iter, err] = solver.forward_kinematics(
+            auto [rec_pose, iter, err] = solver.forwardKinematics(
                 test_motors, Eigen::Vector2d::Zero());
             
             double p_error = std::abs(orig_pitch - rec_pose(0));

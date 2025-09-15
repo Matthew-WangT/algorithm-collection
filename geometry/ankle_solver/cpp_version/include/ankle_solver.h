@@ -47,7 +47,7 @@ public:
      * @param roll 横滚角 (弧度)
      * @return Eigen::Vector2d [phi_l, phi_r] 左右电机角度 (弧度)
      */
-    Eigen::Vector2d inverse_kinematics(double pitch, double roll);
+    Eigen::Vector2d inverseKinematics(double pitch, double roll);
     
     /**
      * @brief 踝关节逆运动学求解 (Eigen输入)
@@ -55,7 +55,7 @@ public:
      * @param pose Eigen::Vector2d [pitch, roll] 俯仰角和横滚角 (弧度)
      * @return Eigen::Vector2d [phi_l, phi_r] 左右电机角度 (弧度)
      */
-    Eigen::Vector2d inverse_kinematics(const Eigen::Vector2d& pose);
+    Eigen::Vector2d inverseKinematics(const Eigen::Vector2d& pose);
     
     /**
      * @brief 计算踝关节雅可比矩阵
@@ -82,7 +82,7 @@ public:
      * @param poses Eigen::MatrixXd (2×N) 每列为一个 [pitch, roll] 姿态
      * @return Eigen::MatrixXd (2×N) 每列为对应的 [phi_l, phi_r] 电机角度
      */
-    Eigen::MatrixXd batch_inverse_kinematics(const Eigen::MatrixXd& poses);
+    Eigen::MatrixXd batchInverseKinematics(const Eigen::MatrixXd& poses);
     
     /**
      * @brief 批量雅可比矩阵计算
@@ -90,7 +90,7 @@ public:
      * @param poses Eigen::MatrixXd (2×N) 每列为一个 [pitch, roll] 姿态
      * @return std::vector<Eigen::Matrix2d> 对应的雅可比矩阵数组
      */
-    std::vector<Eigen::Matrix2d> batch_jacobian(const Eigen::MatrixXd& poses);
+    std::vector<Eigen::Matrix2d> batchJacobian(const Eigen::MatrixXd& poses);
     
     /**
      * @brief 踝关节正向运动学求解
@@ -105,7 +105,7 @@ public:
      * @param step_size 步长因子 (默认0.9)
      * @return std::tuple<Eigen::Vector2d, int, double> [pose, iterations, error]
      */
-    std::tuple<Eigen::Vector2d, int, double> forward_kinematics(
+    std::tuple<Eigen::Vector2d, int, double> forwardKinematics(
         double phi_l, double phi_r, 
         const Eigen::Vector2d& initial_guess = Eigen::Vector2d::Zero(),
         int max_iterations = 100,
@@ -122,7 +122,7 @@ public:
      * @param step_size 步长因子 (默认0.9)
      * @return std::tuple<Eigen::Vector2d, int, double> [pose, iterations, error]
      */
-    std::tuple<Eigen::Vector2d, int, double> forward_kinematics(
+    std::tuple<Eigen::Vector2d, int, double> forwardKinematics(
         const Eigen::Vector2d& motors,
         const Eigen::Vector2d& initial_guess = Eigen::Vector2d::Zero(),
         int max_iterations = 100,
@@ -139,7 +139,7 @@ public:
      * @param step_size 步长因子 (默认0.9)
      * @return std::tuple<Eigen::MatrixXd, Eigen::VectorXi, Eigen::VectorXd> [poses, iterations, errors]
      */
-    std::tuple<Eigen::MatrixXd, Eigen::VectorXi, Eigen::VectorXd> batch_forward_kinematics(
+    std::tuple<Eigen::MatrixXd, Eigen::VectorXi, Eigen::VectorXd> batchForwardKinematics(
         const Eigen::MatrixXd& motors_batch,
         const Eigen::MatrixXd& initial_guesses = Eigen::MatrixXd(),
         int max_iterations = 100,
@@ -190,12 +190,12 @@ private:
     /**
      * @brief 初始化工作内存
      */
-    void initialize_workspace();
+    void initializeWorkspace();
     
     /**
      * @brief 清理工作内存
      */
-    void cleanup_workspace();
+    void cleanupWorkspace();
     
     /**
      * @brief 快速计算2x2矩阵的逆
@@ -204,7 +204,7 @@ private:
      * @return Eigen::Matrix2d 逆矩阵
      * @throws std::runtime_error 如果矩阵奇异
      */
-    Eigen::Matrix2d fast_2x2_inverse(const Eigen::Matrix2d& matrix);
+    Eigen::Matrix2d fast2x2Inverse(const Eigen::Matrix2d& matrix);
 };
 
 #endif // ANKLE_SOLVER_H

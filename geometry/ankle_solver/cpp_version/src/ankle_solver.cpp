@@ -4,21 +4,21 @@
 #include <iostream>
 
 AnkleSolver::AnkleSolver() : iw_(nullptr), w_(nullptr) {
-    initialize_workspace();
+    initializeWorkspace();
 }
 
 AnkleSolver::~AnkleSolver() {
-    cleanup_workspace();
+    cleanupWorkspace();
 }
 
-void AnkleSolver::initialize_workspace() {
+void AnkleSolver::initializeWorkspace() {
     // CasADi 生成的函数通常不需要额外的工作内存
     // 但我们仍然初始化指针为 nullptr
     iw_ = nullptr;
     w_ = nullptr;
 }
 
-void AnkleSolver::cleanup_workspace() {
+void AnkleSolver::cleanupWorkspace() {
     // 清理工作内存（如果有的话）
     if (iw_) {
         delete[] iw_;
@@ -30,7 +30,7 @@ void AnkleSolver::cleanup_workspace() {
     }
 }
 
-Eigen::Vector2d AnkleSolver::inverse_kinematics(double pitch, double roll) {
+Eigen::Vector2d AnkleSolver::inverseKinematics(double pitch, double roll) {
     // 准备输入参数
     casadi_real input_pitch = pitch;
     casadi_real input_roll = roll;
@@ -50,8 +50,8 @@ Eigen::Vector2d AnkleSolver::inverse_kinematics(double pitch, double roll) {
     return Eigen::Vector2d(phi_l, phi_r);
 }
 
-Eigen::Vector2d AnkleSolver::inverse_kinematics(const Eigen::Vector2d& pose) {
-    return inverse_kinematics(pose(0), pose(1));
+Eigen::Vector2d AnkleSolver::inverseKinematics(const Eigen::Vector2d& pose) {
+    return inverseKinematics(pose(0), pose(1));
 }
 
 Eigen::Matrix2d AnkleSolver::jacobian(double pitch, double roll) {
@@ -85,7 +85,7 @@ Eigen::Matrix2d AnkleSolver::jacobian(const Eigen::Vector2d& pose) {
     return jacobian(pose(0), pose(1));
 }
 
-Eigen::MatrixXd AnkleSolver::batch_inverse_kinematics(const Eigen::MatrixXd& poses) {
+Eigen::MatrixXd AnkleSolver::batchInverseKinematics(const Eigen::MatrixXd& poses) {
     if (poses.rows() != 2) {
         throw std::invalid_argument("输入矩阵必须是 2×N 格式 (每列为 [pitch, roll])");
     }
@@ -95,7 +95,7 @@ Eigen::MatrixXd AnkleSolver::batch_inverse_kinematics(const Eigen::MatrixXd& pos
     
     for (int i = 0; i < n_poses; ++i) {
         try {
-            Eigen::Vector2d result = inverse_kinematics(poses(0, i), poses(1, i));
+            Eigen::Vector2d result = inverseKinematics(poses(0, i), poses(1, i));
             results.col(i) = result;
         } catch (const std::runtime_error& e) {
             throw std::runtime_error("批量计算在索引 " + std::to_string(i) + " 处失败: " + e.what());
@@ -105,7 +105,7 @@ Eigen::MatrixXd AnkleSolver::batch_inverse_kinematics(const Eigen::MatrixXd& pos
     return results;
 }
 
-std::vector<Eigen::Matrix2d> AnkleSolver::batch_jacobian(const Eigen::MatrixXd& poses) {
+std::vector<Eigen::Matrix2d> AnkleSolver::batchJacobian(const Eigen::MatrixXd& poses) {
     if (poses.rows() != 2) {
         throw std::invalid_argument("输入矩阵必须是 2×N 格式 (每列为 [pitch, roll])");
     }
@@ -126,7 +126,7 @@ std::vector<Eigen::Matrix2d> AnkleSolver::batch_jacobian(const Eigen::MatrixXd& 
     return results;
 }
 
-Eigen::Matrix2d AnkleSolver::fast_2x2_inverse(const Eigen::Matrix2d& matrix) {
+Eigen::Matrix2d AnkleSolver::fast2x2Inverse(const Eigen::Matrix2d& matrix) {
     // 计算行列式
     double det = matrix(0, 0) * matrix(1, 1) - matrix(0, 1) * matrix(1, 0);
     
@@ -144,7 +144,7 @@ Eigen::Matrix2d AnkleSolver::fast_2x2_inverse(const Eigen::Matrix2d& matrix) {
     return inverse;
 }
 
-std::tuple<Eigen::Vector2d, int, double> AnkleSolver::forward_kinematics(
+std::tuple<Eigen::Vector2d, int, double> AnkleSolver::forwardKinematics(
     double phi_l, double phi_r, 
     const Eigen::Vector2d& initial_guess,
     int max_iterations,
@@ -152,10 +152,10 @@ std::tuple<Eigen::Vector2d, int, double> AnkleSolver::forward_kinematics(
     double step_size) {
     
     Eigen::Vector2d motors(phi_l, phi_r);
-    return forward_kinematics(motors, initial_guess, max_iterations, tolerance, step_size);
+    return forwardKinematics(motors, initial_guess, max_iterations, tolerance, step_size);
 }
 
-std::tuple<Eigen::Vector2d, int, double> AnkleSolver::forward_kinematics(
+std::tuple<Eigen::Vector2d, int, double> AnkleSolver::forwardKinematics(
     const Eigen::Vector2d& motors,
     const Eigen::Vector2d& initial_guess,
     int max_iterations,
@@ -167,7 +167,7 @@ std::tuple<Eigen::Vector2d, int, double> AnkleSolver::forward_kinematics(
     Eigen::Vector2d target_motors = motors;  // [phi_l, phi_r]
     
     // 计算初始误差
-    Eigen::Vector2d current_motors = inverse_kinematics(pose);
+    Eigen::Vector2d current_motors = inverseKinematics(pose);
     Eigen::Vector2d error_vector = target_motors - current_motors;
     double error = error_vector.norm();
     
@@ -179,14 +179,14 @@ std::tuple<Eigen::Vector2d, int, double> AnkleSolver::forward_kinematics(
         
         try {
             // 计算雅可比矩阵的逆
-            Eigen::Matrix2d J_inv = fast_2x2_inverse(J);
+            Eigen::Matrix2d J_inv = fast2x2Inverse(J);
             
             // 更新姿态
             Eigen::Vector2d delta_pose = step_size * J_inv * error_vector;
             pose += delta_pose;
             
             // 重新计算误差
-            current_motors = inverse_kinematics(pose);
+            current_motors = inverseKinematics(pose);
             error_vector = target_motors - current_motors;
             error = error_vector.norm();
             
@@ -199,7 +199,7 @@ std::tuple<Eigen::Vector2d, int, double> AnkleSolver::forward_kinematics(
             Eigen::Vector2d delta_pose = step_size * J_pinv * error_vector;
             pose += delta_pose;
             
-            current_motors = inverse_kinematics(pose);
+            current_motors = inverseKinematics(pose);
             error_vector = target_motors - current_motors;
             error = error_vector.norm();
             
@@ -210,7 +210,7 @@ std::tuple<Eigen::Vector2d, int, double> AnkleSolver::forward_kinematics(
     return std::make_tuple(pose, iterations, error);
 }
 
-std::tuple<Eigen::MatrixXd, Eigen::VectorXi, Eigen::VectorXd> AnkleSolver::batch_forward_kinematics(
+std::tuple<Eigen::MatrixXd, Eigen::VectorXi, Eigen::VectorXd> AnkleSolver::batchForwardKinematics(
     const Eigen::MatrixXd& motors_batch,
     const Eigen::MatrixXd& initial_guesses,
     int max_iterations,
@@ -246,7 +246,7 @@ std::tuple<Eigen::MatrixXd, Eigen::VectorXi, Eigen::VectorXd> AnkleSolver::batch
             Eigen::Vector2d motors = motors_batch.col(i);
             Eigen::Vector2d initial_guess = guesses.col(i);
             
-            auto [pose, iter, error] = forward_kinematics(
+            auto [pose, iter, error] = forwardKinematics(
                 motors, initial_guess, max_iterations, tolerance, step_size);
             
             poses.col(i) = pose;
@@ -268,13 +268,13 @@ Eigen::Vector2d AnkleSolver::velocityJoint2motor(const Eigen::Vector2d& joint_po
 
 Eigen::Vector2d AnkleSolver::velocityJMotor2joint(const Eigen::Vector2d& joint_pos, const Eigen::Vector2d& motor_velocity) {
     Eigen::Matrix2d J = jacobian(joint_pos);
-    Eigen::Matrix2d J_inv = fast_2x2_inverse(J);
+    Eigen::Matrix2d J_inv = fast2x2Inverse(J);
     return J_inv * motor_velocity;
 }
 
 Eigen::Vector2d AnkleSolver::torqueJoint2motor(const Eigen::Vector2d& joint_pos, const Eigen::Vector2d& joint_torque) {
     Eigen::Matrix2d J = jacobian(joint_pos);
-    Eigen::Matrix2d J_inv = fast_2x2_inverse(J);
+    Eigen::Matrix2d J_inv = fast2x2Inverse(J);
     return J_inv.transpose() * joint_torque;
 }
 
