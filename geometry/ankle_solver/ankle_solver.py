@@ -81,16 +81,16 @@ def euler_to_rotmat(roll, pitch, yaw):
 
 
 class AnkleInfo:
-    D = 0.12
+    D = 0.035
     d = D / 2.0
-    h1 = 0.49
-    h2 = 0.37
-    r = 0.12
+    h1 = 0.10
+    h2 = 0.17
+    r = 0.04
+    u_x = -0.0445
+    u_z = 0.00 #跟十字轴的z距离
 
-    delta_z = 0.00  # TODO: 跟十字轴的z距离
-
-    p_lu_3 = ca.vertcat(-r, +d, 0.0)
-    p_ru_3 = ca.vertcat(-r, -d, 0.0)
+    p_lu_3 = ca.vertcat(u_x, +d, u_z)
+    p_ru_3 = ca.vertcat(u_x, -d, u_z)
 
     p_la_1 = ca.vertcat(0, +d, h1)
     p_ra_1 = ca.vertcat(0, -d, h2)
@@ -270,7 +270,7 @@ def __main__():
     last_q_j = np.array([0.0,0.0])
     idx = 0
     use_last_q_j = False # 是否使用上一次的q_j作为初始值，但是此处实验的采样方法存在跳变，所以使用这个方法会导致部分点无法收敛
-    for pitch in range(-80, 80, 3):
+    for pitch in range(-60, 80, 3):
         pitch = 0.01 * pitch
         for roll in range(-80, 80, 3):
             roll = 0.01 * roll
