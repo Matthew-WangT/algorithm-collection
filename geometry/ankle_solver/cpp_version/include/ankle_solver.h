@@ -162,7 +162,7 @@ public:
      * @param motor_velocity Eigen::Vector2d [phi_l, phi_r] 电机速度 (弧度/秒)
      * @return Eigen::Vector2d [pitch, roll] 关节速度 (弧度/秒)
      */
-    Eigen::Vector2d velocityJMotor2joint(const Eigen::Vector2d& joint_pos, const Eigen::Vector2d& motor_velocity);
+    Eigen::Vector2d velocityMotor2joint(const Eigen::Vector2d& joint_pos, const Eigen::Vector2d& motor_velocity);
     
     /**
      * @brief 关节扭矩映射到电机扭矩

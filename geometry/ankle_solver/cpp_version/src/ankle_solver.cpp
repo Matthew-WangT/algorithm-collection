@@ -266,7 +266,7 @@ Eigen::Vector2d AnkleSolver::velocityJoint2motor(const Eigen::Vector2d& joint_po
     return J * joint_velocity;
 }
 
-Eigen::Vector2d AnkleSolver::velocityJMotor2joint(const Eigen::Vector2d& joint_pos, const Eigen::Vector2d& motor_velocity) {
+Eigen::Vector2d AnkleSolver::velocityMotor2joint(const Eigen::Vector2d& joint_pos, const Eigen::Vector2d& motor_velocity) {
     Eigen::Matrix2d J = jacobian(joint_pos);
     Eigen::Matrix2d J_inv = fast2x2Inverse(J);
     return J_inv * motor_velocity;
