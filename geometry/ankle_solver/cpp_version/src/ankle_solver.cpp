@@ -282,3 +282,21 @@ Eigen::Vector2d AnkleSolver::torqueMotor2joint(const Eigen::Vector2d& joint_pos,
     Eigen::Matrix2d J = jacobian(joint_pos);
     return J.transpose() * motor_torque;
 }
+
+std::tuple<Eigen::Vector2d, Eigen::Vector2d, Eigen::Vector2d> AnkleSolver::joint2motor(const Eigen::Vector2d& joint_pos, const Eigen::Vector2d& joint_velocity, const Eigen::Vector2d& joint_torque) {
+    auto p = inverseKinematics(joint_pos);
+    Eigen::Matrix2d J = jacobian(joint_pos);
+    auto v = J * joint_velocity;
+    Eigen::Matrix2d J_inv = fast2x2Inverse(J);
+    auto tau = J_inv.transpose() * joint_torque;
+    return std::make_tuple(p, v, tau);
+}
+
+std::tuple<Eigen::Vector2d, Eigen::Vector2d, Eigen::Vector2d> AnkleSolver::motor2joint(const Eigen::Vector2d& motor_pos, const Eigen::Vector2d& motor_velocity, const Eigen::Vector2d& motor_torque) {
+    auto [p, iterations, error] = forwardKinematics(motor_pos);
+    Eigen::Matrix2d J = jacobian(p);
+    Eigen::Matrix2d J_inv = fast2x2Inverse(J);
+    auto v = J_inv * motor_velocity;
+    auto tau = J.transpose() * motor_torque;
+    return std::make_tuple(p, v, tau);
+}

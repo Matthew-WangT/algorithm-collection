@@ -182,6 +182,26 @@ public:
      */
     Eigen::Vector2d torqueMotor2joint(const Eigen::Vector2d& joint_pos, const Eigen::Vector2d& joint_torque);
 
+    /**
+     * @brief 关节空间的p,v,tau映射到电机空间的p,v,tau
+     * 
+     * @param joint_pos Eigen::Vector2d [pitch, roll] 关节位置 (弧度)
+     * @param joint_velocity Eigen::Vector2d [pitch, roll] 关节速度 (弧度/秒)
+     * @param joint_torque Eigen::Vector2d [pitch, roll] 关节扭矩 (牛顿米)
+     * @return Eigen::Vector2d [phi_l, phi_r] 电机速度 (弧度/秒)
+     * @return Eigen::Vector2d [phi_l, phi_r] 电机扭矩 (牛顿米)
+     */
+    std::tuple<Eigen::Vector2d, Eigen::Vector2d, Eigen::Vector2d> joint2motor(const Eigen::Vector2d& joint_pos, const Eigen::Vector2d& joint_velocity, const Eigen::Vector2d& joint_torque);
+    
+    /**
+     * @brief 电机空间的p,v,tau映射到关节空间的p,v,tau
+     * 
+     * @param motor_pos Eigen::Vector2d [phi_l, phi_r] 电机位置 (弧度)
+     * @param motor_velocity Eigen::Vector2d [phi_l, phi_r] 电机速度 (弧度/秒)
+     * @param motor_torque Eigen::Vector2d [phi_l, phi_r] 电机扭矩 (牛顿米)
+     */
+    std::tuple<Eigen::Vector2d, Eigen::Vector2d, Eigen::Vector2d> motor2joint(const Eigen::Vector2d& motor_pos, const Eigen::Vector2d& motor_velocity, const Eigen::Vector2d& motor_torque);
+
 private:
     // 工作内存指针，用于 CasADi 函数调用
     casadi_int* iw_;
