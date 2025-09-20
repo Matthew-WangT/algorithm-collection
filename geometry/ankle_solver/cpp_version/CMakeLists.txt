@@ -45,7 +45,7 @@ target_link_libraries(ankle_solver
 
 # 设置包含目录
 target_include_directories(ankle_solver PUBLIC
-    ${CMAKE_CURRENT_SOURCE_DIR}
+    ${CMAKE_CURRENT_SOURCE_DIR}/include
 )
 
 # 创建示例可执行文件
@@ -55,6 +55,17 @@ add_executable(example
 
 # 链接示例程序
 target_link_libraries(example
+    ankle_solver
+    Eigen3::Eigen
+)
+
+# 创建等价性测试可执行文件
+add_executable(equivalence_test
+    test/equivalence_test.cpp
+)
+
+# 链接等价性测试程序
+target_link_libraries(equivalence_test
     ankle_solver
     Eigen3::Eigen
 )
@@ -76,6 +87,22 @@ add_custom_target(run_example
     DEPENDS example
     WORKING_DIRECTORY ${CMAKE_CURRENT_BINARY_DIR}
     COMMENT "Running ankle solver example"
+)
+
+# 创建自定义目标用于运行等价性测试
+add_custom_target(run_equivalence_test
+    COMMAND equivalence_test
+    DEPENDS equivalence_test
+    WORKING_DIRECTORY ${CMAKE_CURRENT_BINARY_DIR}
+    COMMENT "Running equivalence test"
+)
+
+# 创建自定义目标用于运行构造函数测试
+add_custom_target(run_constructor_test
+    COMMAND test_constructor
+    DEPENDS test_constructor
+    WORKING_DIRECTORY ${CMAKE_CURRENT_BINARY_DIR}
+    COMMENT "Running constructor parameter test"
 )
 
 # 打印配置信息

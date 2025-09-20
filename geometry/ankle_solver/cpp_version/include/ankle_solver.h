@@ -14,11 +14,38 @@
 #define casadi_int long long int
 #endif
 
-// 前向声明 CasADi 生成的函数
+// 前向声明 CasADi 生成的函数 (带参数版本)
+// 函数签名: ankle_inv(pitch, roll, D, h1, h2, r, u_x, u_z) -> (phi_l, phi_r)
+// 函数签名: ankle_jacobian(pitch, roll, D, h1, h2, r, u_x, u_z) -> J[2x2]
 extern "C" {
     int ankle_inv(const casadi_real** arg, casadi_real** res, casadi_int* iw, casadi_real* w, int mem);
     int ankle_jacobian(const casadi_real** arg, casadi_real** res, casadi_int* iw, casadi_real* w, int mem);
 }
+
+/**
+ * @brief 踝关节结构参数
+ */
+struct AnkleParams {
+    double D;    // 十字轴间距 (m)
+    double h1;   // 左侧连杆长度 (m)
+    double h2;   // 右侧连杆长度 (m)
+    double r;    // 连杆偏移距离 (m)
+    double u_x;  // 十字轴x偏移 (m)
+    double u_z;  // 十字轴z偏移 (m)
+    
+    /**
+     * @brief 默认构造函数，使用标准参数
+     */
+    AnkleParams() : 
+        D(0.035), h1(0.10), h2(0.17), 
+        r(0.04), u_x(-0.0445), u_z(0.00) {}
+    
+    /**
+     * @brief 参数化构造函数
+     */
+    AnkleParams(double D_, double h1_, double h2_, double r_, double u_x_, double u_z_) :
+        D(D_), h1(h1_), h2(h2_), r(r_), u_x(u_x_), u_z(u_z_) {}
+};
 
 /**
  * @brief 踝关节运动学求解器 C++ 包装类
@@ -29,9 +56,16 @@ extern "C" {
 class AnkleSolver {
 public:
     /**
-     * @brief 构造函数
+     * @brief 默认构造函数，使用标准参数
      */
     AnkleSolver();
+    
+    /**
+     * @brief 带参数的构造函数
+     * 
+     * @param params 踝关节结构参数
+     */
+    AnkleSolver(const AnkleParams& params);
     
     /**
      * @brief 析构函数
@@ -203,6 +237,9 @@ public:
     std::tuple<Eigen::Vector2d, Eigen::Vector2d, Eigen::Vector2d> motor2joint(const Eigen::Vector2d& motor_pos, const Eigen::Vector2d& motor_velocity, const Eigen::Vector2d& motor_torque);
 
 private:
+    // 踝关节结构参数
+    AnkleParams params_;
+    
     // 工作内存指针，用于 CasADi 函数调用
     casadi_int* iw_;
     casadi_real* w_;

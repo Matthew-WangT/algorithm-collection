@@ -1,9 +1,13 @@
-#include "include/ankle_solver.h"
+#include "ankle_solver.h"
 #include <stdexcept>
 #include <cstring>
 #include <iostream>
 
-AnkleSolver::AnkleSolver() : iw_(nullptr), w_(nullptr) {
+AnkleSolver::AnkleSolver() : params_(), iw_(nullptr), w_(nullptr) {
+    initializeWorkspace();
+}
+
+AnkleSolver::AnkleSolver(const AnkleParams& params) : params_(params), iw_(nullptr), w_(nullptr) {
     initializeWorkspace();
 }
 
@@ -31,10 +35,18 @@ void AnkleSolver::cleanupWorkspace() {
 }
 
 Eigen::Vector2d AnkleSolver::inverseKinematics(double pitch, double roll) {
-    // 准备输入参数
+    // 准备输入参数 (现在包含结构参数)
     casadi_real input_pitch = pitch;
     casadi_real input_roll = roll;
-    const casadi_real* arg[2] = {&input_pitch, &input_roll};
+    casadi_real input_D = params_.D;
+    casadi_real input_h1 = params_.h1;
+    casadi_real input_h2 = params_.h2;
+    casadi_real input_r = params_.r;
+    casadi_real input_u_x = params_.u_x;
+    casadi_real input_u_z = params_.u_z;
+    
+    const casadi_real* arg[8] = {&input_pitch, &input_roll, &input_D, &input_h1, 
+                                 &input_h2, &input_r, &input_u_x, &input_u_z};
     
     // 准备输出结果
     casadi_real phi_l, phi_r;
@@ -55,10 +67,18 @@ Eigen::Vector2d AnkleSolver::inverseKinematics(const Eigen::Vector2d& pose) {
 }
 
 Eigen::Matrix2d AnkleSolver::jacobian(double pitch, double roll) {
-    // 准备输入参数
+    // 准备输入参数 (现在包含结构参数)
     casadi_real input_pitch = pitch;
     casadi_real input_roll = roll;
-    const casadi_real* arg[2] = {&input_pitch, &input_roll};
+    casadi_real input_D = params_.D;
+    casadi_real input_h1 = params_.h1;
+    casadi_real input_h2 = params_.h2;
+    casadi_real input_r = params_.r;
+    casadi_real input_u_x = params_.u_x;
+    casadi_real input_u_z = params_.u_z;
+    
+    const casadi_real* arg[8] = {&input_pitch, &input_roll, &input_D, &input_h1, 
+                                 &input_h2, &input_r, &input_u_x, &input_u_z};
     
     // 准备输出结果 (2x2 矩阵，按列存储)
     casadi_real jacobian_data[4];

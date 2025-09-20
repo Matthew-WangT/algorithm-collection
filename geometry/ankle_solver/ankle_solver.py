@@ -109,19 +109,44 @@ class Ankle:
     def get_p_ru_1(self, pitch, roll):
         R = euler_to_rotmat(roll, pitch, 0)
         return R @ self.info.p_ru_3
+    
+    def _get_p_u_1(self, pitch, roll, p_u_3):
+        """计算旋转后的点坐标"""
+        R = euler_to_rotmat(roll, pitch, 0)
+        return R @ p_u_3
 
-    def inv(self, pitch, roll, return_float=False):
+    def inv(self, pitch, roll, D=None, h1=None, h2=None, r=None, u_x=None, u_z=None, return_float=False):
         """
         逆运动学计算
         @param pitch: 俯仰角
-        @param roll: 滚转角  
+        @param roll: 滚转角
+        @param D: 十字轴间距 (可选，默认使用info中的值)
+        @param h1: 左侧连杆长度 (可选，默认使用info中的值)
+        @param h2: 右侧连杆长度 (可选，默认使用info中的值)
+        @param r: 连杆偏移距离 (可选，默认使用info中的值)
+        @param u_x: 十字轴x偏移 (可选，默认使用info中的值)
+        @param u_z: 十字轴z偏移 (可选，默认使用info中的值)
         @param return_float: 是否返回Python浮点数而不是CasADi类型
         @return: (phi_l, phi_r) 左右电机角度
         """
-        p_lu_1 = self.get_p_lu_1(pitch, roll)
-        p_ru_1 = self.get_p_ru_1(pitch, roll)
-        phi_l = self._get_phi(p_lu_1, self.info.p_la_1, self.info.h1, self.info.r, return_float)
-        phi_r = self._get_phi(p_ru_1, self.info.p_ra_1, self.info.h2, self.info.r, return_float)
+        # 如果参数未提供，使用默认值
+        if D is None: D = self.info.D
+        if h1 is None: h1 = self.info.h1
+        if h2 is None: h2 = self.info.h2
+        if r is None: r = self.info.r
+        if u_x is None: u_x = self.info.u_x
+        if u_z is None: u_z = self.info.u_z
+        
+        d = D / 2.0
+        p_lu_3 = ca.vertcat(u_x, +d, u_z)
+        p_ru_3 = ca.vertcat(u_x, -d, u_z)
+        p_la_1 = ca.vertcat(0, +d, h1)
+        p_ra_1 = ca.vertcat(0, -d, h2)
+        
+        p_lu_1 = self._get_p_u_1(pitch, roll, p_lu_3)
+        p_ru_1 = self._get_p_u_1(pitch, roll, p_ru_3)
+        phi_l = self._get_phi(p_lu_1, p_la_1, h1, r, return_float)
+        phi_r = self._get_phi(p_ru_1, p_ra_1, h2, r, return_float)
         if return_float:
             return to_float(phi_l), to_float(phi_r)
         return phi_l, phi_r
@@ -167,12 +192,26 @@ class Ankle:
 
         return phi
 
-    def _jacobian_func(self):
+    def _jacobian_func(self, with_params=False):
         roll = ca.SX.sym('roll')
         pitch = ca.SX.sym('pitch')
-        phi_l, phi_r = self.inv(pitch, roll)
-        jac = ca.jacobian(ca.vertcat(phi_l, phi_r), ca.vertcat(pitch, roll))
-        func = ca.Function('jacobian', [pitch, roll], [jac])
+        
+        if with_params:
+            # 创建参数符号变量
+            D = ca.SX.sym('D')
+            h1 = ca.SX.sym('h1')
+            h2 = ca.SX.sym('h2')
+            r = ca.SX.sym('r')
+            u_x = ca.SX.sym('u_x')
+            u_z = ca.SX.sym('u_z')
+            
+            phi_l, phi_r = self.inv(pitch, roll, D, h1, h2, r, u_x, u_z)
+            jac = ca.jacobian(ca.vertcat(phi_l, phi_r), ca.vertcat(pitch, roll))
+            func = ca.Function('jacobian', [pitch, roll, D, h1, h2, r, u_x, u_z], [jac])
+        else:
+            phi_l, phi_r = self.inv(pitch, roll)
+            jac = ca.jacobian(ca.vertcat(phi_l, phi_r), ca.vertcat(pitch, roll))
+            func = ca.Function('jacobian', [pitch, roll], [jac])
         return func
 
     def jacobian(self, roll, pitch, return_numpy=False):
@@ -190,13 +229,18 @@ class Ankle:
             return np.array(jac)
         return jac
 
-    def export_cpp(self, out_dir: str, prefix: str = "ankle"):
+    def export_cpp(self, out_dir: str, prefix: str = "ankle", params_only: bool = True):
         """
         将 IK 与 Jacobian 导出为可由 C++ 编译使用的 C 源码与头文件。
         生成文件: {out_dir}/{prefix}_functions.c 与 {out_dir}/{prefix}_functions.h
 
+        @param out_dir: 输出目录
+        @param prefix: 函数名前缀
+        @param params_only: 是否只导出带参数的函数版本（默认True）
+        
         用法示例:
-            ankle.export_cpp("./build", prefix="ankle")
+            ankle.export_cpp("./build", prefix="ankle")  # 只导出带参数版本
+            ankle.export_cpp("./build", prefix="ankle", params_only=False)  # 导出传统版本
         """
         os.makedirs(out_dir, exist_ok=True)
 
@@ -204,17 +248,41 @@ class Ankle:
         pitch = ca.SX.sym('pitch')
         roll = ca.SX.sym('roll')
 
-        # IK 与 Jacobian
-        phi_l, phi_r = self.inv(pitch, roll)
-        J = ca.jacobian(ca.vertcat(phi_l, phi_r), ca.vertcat(pitch, roll))
+        if params_only:
+            # 创建参数符号变量
+            D = ca.SX.sym('D')
+            h1 = ca.SX.sym('h1')
+            h2 = ca.SX.sym('h2')
+            r = ca.SX.sym('r')
+            u_x = ca.SX.sym('u_x')
+            u_z = ca.SX.sym('u_z')
+            
+            # IK 与 Jacobian
+            phi_l, phi_r = self.inv(pitch, roll, D, h1, h2, r, u_x, u_z)
+            J = ca.jacobian(ca.vertcat(phi_l, phi_r), ca.vertcat(pitch, roll))
 
-        f_inv = ca.Function(f"{prefix}_inv", [pitch, roll], [phi_l, phi_r],
-                            ["pitch", "roll"], ["phi_l", "phi_r"])
-        f_jac = ca.Function(f"{prefix}_jacobian", [pitch, roll], [J],
-                            ["pitch", "roll"], ["J"])
+            f_inv = ca.Function(f"{prefix}_inv", 
+                                [pitch, roll, D, h1, h2, r, u_x, u_z], 
+                                [phi_l, phi_r],
+                                ["pitch", "roll", "D", "h1", "h2", "r", "u_x", "u_z"], 
+                                ["phi_l", "phi_r"])
+            f_jac = ca.Function(f"{prefix}_jacobian", 
+                                [pitch, roll, D, h1, h2, r, u_x, u_z], 
+                                [J],
+                                ["pitch", "roll", "D", "h1", "h2", "r", "u_x", "u_z"], 
+                                ["J"])
+        else:
+            # IK 与 Jacobian（传统版本，使用硬编码参数）
+            phi_l, phi_r = self.inv(pitch, roll)
+            J = ca.jacobian(ca.vertcat(phi_l, phi_r), ca.vertcat(pitch, roll))
+
+            f_inv = ca.Function(f"{prefix}_inv", [pitch, roll], [phi_l, phi_r],
+                                ["pitch", "roll"], ["phi_l", "phi_r"])
+            f_jac = ca.Function(f"{prefix}_jacobian", [pitch, roll], [J],
+                                ["pitch", "roll"], ["J"])
 
         # 代码生成（CasADi 生成 C 代码，可被 C++ 直接编译链接）
-        # 注意：CodeGenerator 的参数必须是一个“模块名”，不能包含路径或扩展名
+        # 注意：CodeGenerator 的参数必须是一个"模块名"，不能包含路径或扩展名
         module_name = f"{prefix}_functions"
         cg = ca.CodeGenerator(module_name)
         cg.add(f_inv)
@@ -253,6 +321,8 @@ def __main__():
     print("phi_l(-0.2, 0) (float):", ankle.inv(-0.2, 0, return_float=True))
     print("phi_l(0, -0.2) (float):", ankle.inv(0.0, -0.2, return_float=True))
 
+    # 默认导出带参数的C++函数
+    print("导出带参数的C++函数...")
     ankle.export_cpp("./cpp_version/autogen_code", prefix="ankle")
     
     # 测试jacobian输出

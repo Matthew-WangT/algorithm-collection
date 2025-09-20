@@ -1,4 +1,4 @@
-#include "include/ankle_solver.h"
+#include "ankle_solver.h"
 #include <iostream>
 #include <iomanip>
 #include <cmath>
@@ -23,7 +23,14 @@ void printMatrix(const Eigen::Matrix2d& matrix, const std::string& name) {
 int main() {
     try {
         // 创建踝关节求解器实例
-        AnkleSolver solver;
+        AnkleParams params;
+        params.D = 0.035;
+        params.h1 = 0.10;
+        params.h2 = 0.17;
+        params.r = 0.04;
+        params.u_x = -0.0445;
+        params.u_z = 0.00;
+        AnkleSolver solver(params);
         
         std::cout << "=== 踝关节运动学求解器测试 ===" << std::endl;
         
