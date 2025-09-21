@@ -24,10 +24,12 @@ int main() {
     try {
         // 创建踝关节求解器实例
         AnkleParams params;
-        params.D = 0.035;
+        params.d1 = 0.035/2.0;
+        params.d2 = 0.035/2.0;
         params.h1 = 0.10;
         params.h2 = 0.17;
-        params.r = 0.04;
+        params.r1 = 0.04;
+        params.r2 = 0.04;
         params.u_x = -0.0445;
         params.u_z = 0.00;
         AnkleSolver solver(params);

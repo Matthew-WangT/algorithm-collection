@@ -81,21 +81,22 @@ def euler_to_rotmat(roll, pitch, yaw):
 
 
 class AnkleInfo:
-    D = 0.035
-    d = D / 2.0
+    d1 = 0.035 / 2.0
+    d2 = 0.035 / 2.0
     h1 = 0.10
     h2 = 0.17
-    r = 0.04
+    r1 = 0.04
+    r2 = 0.04
     u_x = -0.0445
     u_z = 0.00 #跟十字轴的z距离
 
-    p_lu_3 = ca.vertcat(u_x, +d, u_z)
-    p_ru_3 = ca.vertcat(u_x, -d, u_z)
+    p_lu_3 = ca.vertcat(u_x, +d1, u_z)
+    p_ru_3 = ca.vertcat(u_x, -d2, u_z)
 
-    p_la_1 = ca.vertcat(0, +d, h1)
-    p_ra_1 = ca.vertcat(0, -d, h2)
-    p_lb_1 = ca.vertcat(-r, +d, h1)
-    p_rb_1 = ca.vertcat(-r, -d, h2)
+    p_la_1 = ca.vertcat(0, +d1, h1)
+    p_ra_1 = ca.vertcat(0, -d2, h2)
+    p_lb_1 = ca.vertcat(-r1, +d1, h1)
+    p_rb_1 = ca.vertcat(-r2, -d2, h2)
 
 
 class Ankle:
@@ -115,38 +116,41 @@ class Ankle:
         R = euler_to_rotmat(roll, pitch, 0)
         return R @ p_u_3
 
-    def inv(self, pitch, roll, D=None, h1=None, h2=None, r=None, u_x=None, u_z=None, return_float=False):
+    def inv(self, pitch, roll, d1=None, d2=None, h1=None, h2=None, r1=None, r2=None, u_x=None, u_z=None, return_float=False):
         """
         逆运动学计算
         @param pitch: 俯仰角
         @param roll: 滚转角
-        @param D: 十字轴间距 (可选，默认使用info中的值)
+        @param d1: 左侧十字轴间距的一半 (可选，默认使用info中的值)
+        @param d2: 右侧十字轴间距的一半 (可选，默认使用info中的值)
         @param h1: 左侧连杆长度 (可选，默认使用info中的值)
         @param h2: 右侧连杆长度 (可选，默认使用info中的值)
-        @param r: 连杆偏移距离 (可选，默认使用info中的值)
+        @param r1: 左侧连杆偏移距离 (可选，默认使用info中的值)
+        @param r2: 右侧连杆偏移距离 (可选，默认使用info中的值)
         @param u_x: 十字轴x偏移 (可选，默认使用info中的值)
         @param u_z: 十字轴z偏移 (可选，默认使用info中的值)
         @param return_float: 是否返回Python浮点数而不是CasADi类型
         @return: (phi_l, phi_r) 左右电机角度
         """
         # 如果参数未提供，使用默认值
-        if D is None: D = self.info.D
+        if d1 is None: d1 = self.info.d1
+        if d2 is None: d2 = self.info.d2
         if h1 is None: h1 = self.info.h1
         if h2 is None: h2 = self.info.h2
-        if r is None: r = self.info.r
+        if r1 is None: r1 = self.info.r1
+        if r2 is None: r2 = self.info.r2
         if u_x is None: u_x = self.info.u_x
         if u_z is None: u_z = self.info.u_z
         
-        d = D / 2.0
-        p_lu_3 = ca.vertcat(u_x, +d, u_z)
-        p_ru_3 = ca.vertcat(u_x, -d, u_z)
-        p_la_1 = ca.vertcat(0, +d, h1)
-        p_ra_1 = ca.vertcat(0, -d, h2)
+        p_lu_3 = ca.vertcat(u_x, +d1, u_z)
+        p_ru_3 = ca.vertcat(u_x, -d2, u_z)
+        p_la_1 = ca.vertcat(0, +d1, h1)
+        p_ra_1 = ca.vertcat(0, -d2, h2)
         
         p_lu_1 = self._get_p_u_1(pitch, roll, p_lu_3)
         p_ru_1 = self._get_p_u_1(pitch, roll, p_ru_3)
-        phi_l = self._get_phi(p_lu_1, p_la_1, h1, r, return_float)
-        phi_r = self._get_phi(p_ru_1, p_ra_1, h2, r, return_float)
+        phi_l = self._get_phi(p_lu_1, p_la_1, h1, r1, return_float)
+        phi_r = self._get_phi(p_ru_1, p_ra_1, h2, r2, return_float)
         if return_float:
             return to_float(phi_l), to_float(phi_r)
         return phi_l, phi_r
@@ -198,16 +202,18 @@ class Ankle:
         
         if with_params:
             # 创建参数符号变量
-            D = ca.SX.sym('D')
+            d1 = ca.SX.sym('d1')
+            d2 = ca.SX.sym('d2')
             h1 = ca.SX.sym('h1')
             h2 = ca.SX.sym('h2')
-            r = ca.SX.sym('r')
+            r1 = ca.SX.sym('r1')
+            r2 = ca.SX.sym('r2')
             u_x = ca.SX.sym('u_x')
             u_z = ca.SX.sym('u_z')
             
-            phi_l, phi_r = self.inv(pitch, roll, D, h1, h2, r, u_x, u_z)
+            phi_l, phi_r = self.inv(pitch, roll, d1, d2, h1, h2, r1, r2, u_x, u_z)
             jac = ca.jacobian(ca.vertcat(phi_l, phi_r), ca.vertcat(pitch, roll))
-            func = ca.Function('jacobian', [pitch, roll, D, h1, h2, r, u_x, u_z], [jac])
+            func = ca.Function('jacobian', [pitch, roll, d1, d2, h1, h2, r1, r2, u_x, u_z], [jac])
         else:
             phi_l, phi_r = self.inv(pitch, roll)
             jac = ca.jacobian(ca.vertcat(phi_l, phi_r), ca.vertcat(pitch, roll))
@@ -250,26 +256,28 @@ class Ankle:
 
         if params_only:
             # 创建参数符号变量
-            D = ca.SX.sym('D')
+            d1 = ca.SX.sym('d1')
+            d2 = ca.SX.sym('d2')
             h1 = ca.SX.sym('h1')
             h2 = ca.SX.sym('h2')
-            r = ca.SX.sym('r')
+            r1 = ca.SX.sym('r1')
+            r2 = ca.SX.sym('r2')
             u_x = ca.SX.sym('u_x')
             u_z = ca.SX.sym('u_z')
             
             # IK 与 Jacobian
-            phi_l, phi_r = self.inv(pitch, roll, D, h1, h2, r, u_x, u_z)
+            phi_l, phi_r = self.inv(pitch, roll, d1, d2, h1, h2, r1, r2, u_x, u_z)
             J = ca.jacobian(ca.vertcat(phi_l, phi_r), ca.vertcat(pitch, roll))
 
             f_inv = ca.Function(f"{prefix}_inv", 
-                                [pitch, roll, D, h1, h2, r, u_x, u_z], 
+                                [pitch, roll, d1, d2, h1, h2, r1, r2, u_x, u_z], 
                                 [phi_l, phi_r],
-                                ["pitch", "roll", "D", "h1", "h2", "r", "u_x", "u_z"], 
+                                ["pitch", "roll", "d1", "d2", "h1", "h2", "r1", "r2", "u_x", "u_z"], 
                                 ["phi_l", "phi_r"])
             f_jac = ca.Function(f"{prefix}_jacobian", 
-                                [pitch, roll, D, h1, h2, r, u_x, u_z], 
+                                [pitch, roll, d1, d2, h1, h2, r1, r2, u_x, u_z], 
                                 [J],
-                                ["pitch", "roll", "D", "h1", "h2", "r", "u_x", "u_z"], 
+                                ["pitch", "roll", "d1", "d2", "h1", "h2", "r1", "r2", "u_x", "u_z"], 
                                 ["J"])
         else:
             # IK 与 Jacobian（传统版本，使用硬编码参数）

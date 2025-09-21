@@ -15,8 +15,8 @@
 #endif
 
 // 前向声明 CasADi 生成的函数 (带参数版本)
-// 函数签名: ankle_inv(pitch, roll, D, h1, h2, r, u_x, u_z) -> (phi_l, phi_r)
-// 函数签名: ankle_jacobian(pitch, roll, D, h1, h2, r, u_x, u_z) -> J[2x2]
+// 函数签名: ankle_inv(pitch, roll, d1, d2, h1, h2, r1, r2, u_x, u_z) -> (phi_l, phi_r)
+// 函数签名: ankle_jacobian(pitch, roll, d1, d2, h1, h2, r1, r2, u_x, u_z) -> J[2x2]
 extern "C" {
     int ankle_inv(const casadi_real** arg, casadi_real** res, casadi_int* iw, casadi_real* w, int mem);
     int ankle_jacobian(const casadi_real** arg, casadi_real** res, casadi_int* iw, casadi_real* w, int mem);
@@ -26,10 +26,12 @@ extern "C" {
  * @brief 踝关节结构参数
  */
 struct AnkleParams {
-    double D;    // 十字轴间距 (m)
-    double h1;   // 左侧连杆长度 (m)
+    double d1;   // 左侧十字轴间距的一半 (m)
+    double d2;   // 右侧十字轴间距的一半 (m)
+    double h1;   // 左侧连杆长度 (m) 
     double h2;   // 右侧连杆长度 (m)
-    double r;    // 连杆偏移距离 (m)
+    double r1;   // 左侧连杆偏移距离 (m)
+    double r2;   // 右侧连杆偏移距离 (m)
     double u_x;  // 十字轴x偏移 (m)
     double u_z;  // 十字轴z偏移 (m)
     
@@ -37,14 +39,14 @@ struct AnkleParams {
      * @brief 默认构造函数，使用标准参数
      */
     AnkleParams() : 
-        D(0.035), h1(0.10), h2(0.17), 
-        r(0.04), u_x(-0.0445), u_z(0.00) {}
+        d1(0.035/2.0), d2(0.035/2.0), h1(0.10), h2(0.17), 
+        r1(0.04), r2(0.04), u_x(-0.0445), u_z(0.00) {}
     
     /**
      * @brief 参数化构造函数
      */
-    AnkleParams(double D_, double h1_, double h2_, double r_, double u_x_, double u_z_) :
-        D(D_), h1(h1_), h2(h2_), r(r_), u_x(u_x_), u_z(u_z_) {}
+    AnkleParams(double d1_, double d2_, double h1_, double h2_, double r1_, double r2_, double u_x_, double u_z_) :
+        d1(d1_), d2(d2_), h1(h1_), h2(h2_), r1(r1_), r2(r2_), u_x(u_x_), u_z(u_z_) {}
 };
 
 /**
