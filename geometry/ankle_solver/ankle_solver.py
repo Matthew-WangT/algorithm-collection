@@ -184,7 +184,7 @@ class Ankle:
         d_ly = p_a[1] - p_u[1]
         l_xz = ca.sqrt(h**2 - d_ly**2)
 
-        delta_x = p_a[0] - p_u[0]
+        delta_x = ca.fabs(p_a[0] - p_u[0])
         delta_z = p_a[2] - p_u[2]
         delta_l = ca.sqrt(delta_x**2 + delta_z**2)
 
@@ -194,7 +194,7 @@ class Ankle:
         beta = ca.acos(val)
         phi = alpha + beta - ca.pi / 2
 
-        return phi
+        return -phi * ca.sign(p_u[0])
 
     def _jacobian_func(self, with_params=False):
         roll = ca.SX.sym('roll')

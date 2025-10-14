@@ -4,6 +4,12 @@ import mujoco.viewer
 import time
 import threading
 from typing import List, Optional, Dict, Any
+import os
+import sys
+sys.path.append(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
+# sys.path.append(os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__)))))
+print(sys.path)
+from ankle_solver import Ankle, AnkleInfo
 
 
 class AnkleRobotController:
@@ -22,7 +28,18 @@ class AnkleRobotController:
         """
         self.xml_path = xml_path
         self.render_enabled = render
+        info = AnkleInfo()
+        info.d1 = 0.05
+        info.d2 = 0.05
+        info.h1 = 0.10
+        info.h2 = 0.10
+        info.r1 = 0.04
+        info.r2 = 0.04
+        info.u_x = 0.04
+        info.u_z = 0.00
         
+        self.ankle_solver = Ankle(info)
+
         # 加载模型
         self.model = mujoco.MjModel.from_xml_path(xml_path)
         self.data = mujoco.MjData(self.model)
@@ -42,7 +59,7 @@ class AnkleRobotController:
         
         # PID控制器参数（用于位置和速度控制）
         self.kp = 1.0*np.array([10.0, 10.0, 0.0, 0.0])  # 比例增益
-        self.ki = 0.0*np.array([1.0, 1.0, 0.0, 0.0])  # 积分增益
+        self.ki = 0.0*np.array([0.0, 0.0, 0.0, 0.0])  # 积分增益
         self.kd = 0.1*np.array([1.0, 1.0, 0.0, 0.0])  # 微分增益
         
         # PID控制器状态
@@ -72,14 +89,18 @@ class AnkleRobotController:
         """获取当前关节位置"""
         positions = np.zeros(4)
         for i, joint_id in enumerate(self.joint_ids):
-            positions[i] = self.data.qpos[joint_id]
+            # 使用jnt_qposadr获取关节在qpos数组中的正确索引
+            qpos_addr = self.model.jnt_qposadr[joint_id]
+            positions[i] = self.data.qpos[qpos_addr]
         return positions
     
     def get_joint_velocities(self) -> np.ndarray:
         """获取当前关节速度"""
         velocities = np.zeros(4)
         for i, joint_id in enumerate(self.joint_ids):
-            velocities[i] = self.data.qvel[joint_id]
+            # 使用jnt_dofadr获取关节在qvel数组中的正确索引
+            dof_addr = self.model.jnt_dofadr[joint_id]
+            velocities[i] = self.data.qvel[dof_addr]
         return velocities
     
     def get_joint_torques(self) -> np.ndarray:
@@ -155,7 +176,15 @@ class AnkleRobotController:
     def _compute_position_control(self) -> np.ndarray:
         """计算位置控制输出"""
         current_positions = self.get_joint_positions()
+        # print(f"real positions: {current_positions}")
         current_velocities = self.get_joint_velocities()
+        # solve
+        q_j, _, _ = self.ankle_solver.forward(current_positions[-2:], np.zeros(2))
+        phi_l, phi_r = self.ankle_solver.inv(current_positions[0], current_positions[1])
+        print(f"esti j1: {q_j[0]}, j2: {q_j[1]}")
+        print(f"real j1: {current_positions[0]}, j2: {current_positions[1]}")
+        print(f"esti m1: {phi_l}, m2: {phi_r}")
+        print(f"real m1: {current_positions[2]}, m2: {current_positions[3]}")
         
         # PID控制
         error = self.target_positions - current_positions
