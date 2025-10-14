@@ -28,7 +28,7 @@ class AnkleRobotController:
         self.data = mujoco.MjData(self.model)
         
         # 关节信息
-        self.joint_names = ['ankle_pitch', 'ankle_roll', 'ankle_l_joint', 'ankle_r_joint']
+        self.joint_names = ['ankle_pitch_joint', 'ankle_roll_joint', 'ankle_l_joint', 'ankle_r_joint']
         self.actuator_names = ['ankle_pitch_motor', 'ankle_roll_motor', 'ankle_l_motor', 'ankle_r_motor']
         
         # 获取关节和电机索引
@@ -41,7 +41,7 @@ class AnkleRobotController:
         self.control_mode = 'position'  # 'position', 'velocity', 'torque'
         
         # PID控制器参数（用于位置和速度控制）
-        self.kp = 1.0*np.array([1.0, 1.0, 0.0, 0.0])  # 比例增益
+        self.kp = 1.0*np.array([10.0, 10.0, 0.0, 0.0])  # 比例增益
         self.ki = 0.0*np.array([1.0, 1.0, 0.0, 0.0])  # 积分增益
         self.kd = 0.1*np.array([1.0, 1.0, 0.0, 0.0])  # 微分增益
         
@@ -338,7 +338,7 @@ def interactive_demo():
     
     # 初始位置
     current_targets = [0.0, 0.0, 0.0, 0.0]
-    step_size = 0.1
+    step_size = 0.01
     
     def simulation_thread():
         """仿真线程"""
