@@ -216,10 +216,25 @@ def visualize_dataset(
         start = sample["start"][0].numpy()
         goal = sample["goal"][0].numpy()
 
-        ax.imshow(maze, cmap=maze_cmap, vmin=0, vmax=1)
+        ax.imshow(maze, cmap=maze_cmap, vmin=0, vmax=1, interpolation="nearest")
 
         traj_mask = np.ma.masked_where(traj == 0, traj)
-        ax.imshow(traj_mask, cmap="Blues", alpha=0.8)
+        ax.imshow(
+            traj_mask,
+            cmap="Blues",
+            alpha=0.95,
+            vmin=0,
+            vmax=1,
+            interpolation="nearest",
+        )
+        if np.any(traj > 0):
+            ax.contour(
+                traj,
+                levels=[0.5],
+                colors="#1f77b4",
+                linewidths=1.6,
+                linestyles="solid",
+            )
 
         def _plot_marker(mask: np.ndarray, marker: str, color: str) -> None:
             coords = np.argwhere(mask > 0.5)
