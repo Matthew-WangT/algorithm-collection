@@ -179,7 +179,40 @@ for step in range(500):
         print(f"Step {step}, Loss: {loss_critic.item():.6f}")
 
 # %% [markdown]
-# ## 5. System 2 推理：拒绝采样
+# ## 5. IQL 微调 (Implicit Q-Learning)
+# 为了进一步提升 Critic 的判别能力，特别是处理含噪数据时，我们可以引入 Expectile Regression。
+# Expectile Loss 是一种非对称的 MSE：
+# - 当 prediction < target (低估) 时，权重为 $\tau$ (e.g. 0.9)
+# - 当 prediction > target (高估) 时，权重为 $1-\tau$ (e.g. 0.1)
+# 这会让 Critic 倾向于预测价值分布的上分位数（即更乐观）。
+
+# %%
+def iql_expectile_loss(pred, target, expectile=0.7):
+    diff = target - pred
+    # 非对称权重
+    weight = torch.where(diff > 0, expectile, (1 - expectile))
+    return torch.mean(weight * (diff ** 2))
+
+print("Start IQL Finetuning...")
+# 继续训练 Critic，但使用 IQL Loss
+for step in range(500):
+    real_actions = generate_bimodal_data(256)
+    # 加上一点随机噪声模拟真实 RL 环境的不确定性
+    rewards = reward_function(real_actions) + torch.randn(256, 1) * 0.1
+    
+    pred_values = critic(real_actions)
+    # 使用 Expectile Loss (tau=0.9)
+    loss_iql = iql_expectile_loss(pred_values, rewards, expectile=0.9)
+    
+    optimizer_critic.zero_grad()
+    loss_iql.backward()
+    optimizer_critic.step()
+    
+    if step % 100 == 0:
+        print(f"IQL Step {step}, Loss: {loss_iql.item():.6f}")
+
+# %% [markdown]
+# ## 6. System 2 推理：拒绝采样
 # 1. Actor 生成一批混杂的候选（有的在左下，有的在右上）。
 # 2. Critic 给它们打分。
 # 3. 我们只取 Top-K 的结果。
@@ -216,7 +249,7 @@ print("Running System 2 Inference...")
 best_actions, all_candidates, all_scores, trajectory = system_2_inference(actor, critic, num_samples=200, top_k=50)
 
 # %% [markdown]
-# ## 6. 结果可视化
+# ## 7. 结果可视化
 # 左图：Actor 原始生成结果，颜色代表 Critic 打分（黄色高分，紫色低分）。
 # 中图：筛选后的 Top-K 结果（应该集中在右上角）。
 # 右图：Critic 学到的 Value 分布图。
@@ -260,7 +293,7 @@ plt.tight_layout()
 plt.show()
 
 # %% [markdown]
-# ## 7. 轨迹可视化
+# ## 8. 轨迹可视化
 # 展示粒子是如何从噪声分布移动到目标分布的。
 
 # %%
