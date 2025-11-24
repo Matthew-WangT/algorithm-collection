@@ -205,6 +205,8 @@ def reward_function(action):
 # 我们训练两个 Critic：
 # 1. **MSE Critic**: 学习平均奖励 (Expected Value)。
 # 2. **IQL Critic**: 学习最优奖励 (Expectile Value, $\tau=0.95$)。
+#
+# **重要修改**: 为了防止 Critic 对障碍物内部产生错误的高估（因为它没见过里面的坏数据），我们引入**Negative Mining**。在训练时混入障碍物内部的随机点作为负样本。
 
 # %%
 critic_mse = Critic(input_dim=2, hidden_dim=64)
@@ -218,27 +220,38 @@ def iql_expectile_loss(pred, target, expectile=0.95):
     weight = torch.where(diff > 0, expectile, (1 - expectile))
     return torch.mean(weight * (diff ** 2))
 
-print("Start Training Critics...")
-for step in range(1000):
-    # 采样数据
-    real_actions = generate_obstacle_data(256)
-    rewards = reward_function(real_actions)
+print("Start Training Critics with Negative Mining...")
+for step in range(2000):
+    # 1. 真实数据 (Positive Samples)
+    real_actions = generate_obstacle_data(128)
+    rewards_real = reward_function(real_actions)
+    
+    # 2. 负样本 (Negative Mining)
+    # 重点在障碍物内部采样：r ~ U[0, 1.1]
+    r_neg = torch.rand(128, 1) * 1.1
+    theta_neg = torch.rand(128, 1) * 2 * np.pi
+    neg_actions = torch.cat([r_neg * torch.cos(theta_neg), r_neg * torch.sin(theta_neg)], dim=1)
+    rewards_neg = reward_function(neg_actions) # 自动给出低分
+    
+    # 合并
+    combined_actions = torch.cat([real_actions, neg_actions], dim=0)
+    combined_rewards = torch.cat([rewards_real, rewards_neg], dim=0)
     
     # 1. MSE Update
-    pred_mse = critic_mse(real_actions)
-    loss_mse = nn.MSELoss()(pred_mse, rewards)
+    pred_mse = critic_mse(combined_actions)
+    loss_mse = nn.MSELoss()(pred_mse, combined_rewards)
     opt_mse.zero_grad()
     loss_mse.backward()
     opt_mse.step()
     
     # 2. IQL Update
-    pred_iql = critic_iql(real_actions)
-    loss_iql = iql_expectile_loss(pred_iql, rewards, expectile=0.95)
+    pred_iql = critic_iql(combined_actions)
+    loss_iql = iql_expectile_loss(pred_iql, combined_rewards, expectile=0.95)
     opt_iql.zero_grad()
     loss_iql.backward()
     opt_iql.step()
     
-    if step % 200 == 0:
+    if step % 500 == 0:
         print(f"Step {step} | MSE Loss: {loss_mse.item():.4f} | IQL Loss: {loss_iql.item():.4f}")
 
 # %% [markdown]
