@@ -59,62 +59,8 @@ def generate_obstacle_data(batch_size):
     这里我们生成两个弯月形的数据簇，代表从左绕和从右绕。
     """
     n = batch_size
-    
-    # 随机选择左边或右边
-    side = torch.randint(0, 2, (n, 1)).float() * 2 - 1 # -1 (左) or 1 (右)
-    
-    # 生成绕行半径：最优半径是 1.0 (紧贴障碍)，但大部分数据在 1.5 ~ 2.5 之间 (次优)
-    # 使用 Gamma 分布或者简单偏移的均匀分布来模拟"次优"
-    # 大部分人绕得远 (r ~ 2.0)，少数人绕得近 (r ~ 1.1)
-    radius = 1.2 + torch.abs(torch.randn(n, 1)) * 0.8
-    
-    # 角度分布：在障碍物两侧的半圆弧上
-    # theta ~ Uniform(0, pi) for Left, Uniform(pi, 2pi) for Right
-    # 这里为了简化，我们直接生成半圆环
-    theta = torch.rand(n, 1) * np.pi # 0 ~ pi
-    
-    # 转换极坐标到直角坐标
-    # 如果是左边 (-1)，x 应该是负的，所以 theta 对应 pi/2 ~ 3pi/2?
-    # 简单点：
-    # x = r * cos(theta)
-    # y = r * sin(theta)
-    # 我们希望 y 分布在 -3 到 3 之间，x 避开 0
-    
-    # 重新设计：
-    # 我们生成两段圆弧数据
-    theta_base = torch.rand(n, 1) * np.pi # 0 to pi
-    
-    # 左边：theta in [pi/2, 3pi/2] -> x < 0
-    # 右边：theta in [-pi/2, pi/2] -> x > 0
-    
-    # 让 theta 集中在 y=0 附近，因为起点终点都在 x=0
-    # 我们用一个简单的两段弧形分布
-    # y = t, t from -3 to 3
-    # x = side * (radius * sqrt(1 - (t/3)^2))  (椭圆轨迹)
-    
-    t = (torch.rand(n, 1) * 2 - 1) * 2.5 # y 坐标分布在 -2.5 到 2.5
-    
-    # x 坐标：基于 y 计算，加上随机半径偏移
-    # 基础形状是椭圆或者圆
-    # x_base = sqrt(max(0, r^2 - y^2))
-    # 这里简化：直接让 x = side * (1.0 + noise)
-    # 为了像绕障，x 的绝对值应该在 y=0 时最大
-    
-    x_mag = torch.sqrt(torch.relu(radius**2 - t**2)) + 0.1 # 保证不撞墙
-    # 如果 radius < |t|，则 x_mag = 0.1 (虽然这不物理，但作为 toy data 够了)
-    # 修正：我们希望生成看起来像两条绕开 (0,0) 的流
-    
-    # 方案 B：直接生成两个高斯簇，但在中间抠掉一个洞
-    # 这样 Flow Matching 会自动学会避开中间
-    
-    data = torch.randn(n, 2) * 1.5
-    # 移除中间半径 < 1.0 的点 (障碍物)
-    dist = torch.norm(data, dim=1)
-    mask = dist > 1.1
-    data = data[mask]
-    
-    # 现在的 data 是一个中间有洞的高斯分布。
-    # 但这还是不够体现"次优"。
+    n1 = n // 2
+    n2 = n - n1
     
     # 方案 C (最终方案):
     # 左簇: x ~ N(-1.5, 0.5), y ~ N(0, 1)
@@ -122,13 +68,23 @@ def generate_obstacle_data(batch_size):
     # 奖励: 离 (0,0) 越近 (但 > 1) 奖励越高。
     # 这样数据大部分分布在 x=±1.5 (次优)，最优策略是 x=±1.0
     
-    n1 = n // 2
-    n2 = n - n1
-    
     data1 = torch.randn(n1, 2) * torch.tensor([0.5, 1.0]) + torch.tensor([-1.8, 0.0])
     data2 = torch.randn(n2, 2) * torch.tensor([0.5, 1.0]) + torch.tensor([1.8, 0.0])
     
     data = torch.cat([data1, data2], dim=0)
+    
+    # 强制过滤掉所有距离原点小于 1.1 的点 (避免撞墙)
+    dist = torch.norm(data, dim=1)
+    valid_mask = dist > 1.1
+    data = data[valid_mask]
+    
+    # 如果过滤后数量不够，简单补齐
+    if len(data) < batch_size:
+        # 递归补齐比较慢，这里直接用复制补齐
+        repeats = (batch_size // len(data)) + 1
+        data = data.repeat(repeats, 1)
+        data = data[:batch_size]
+        
     return data
 
 # 可视化
