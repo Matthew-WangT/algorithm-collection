@@ -254,8 +254,45 @@ for step in range(2000):
     if step % 500 == 0:
         print(f"Step {step} | MSE Loss: {loss_mse.item():.4f} | IQL Loss: {loss_iql.item():.4f}")
 
+
 # %% [markdown]
-# ## 6. System 2 推理与可视化
+# ## 6. 轨迹可视化
+# 展示粒子是如何从噪声分布移动到目标分布的。
+
+# %%
+# 我们需要修改 solve_ode_inference 让它返回轨迹
+@torch.no_grad()
+def solve_ode_trajectory(actor, batch_size=1, steps=10):
+    x_t = torch.randn(batch_size, 2)
+    dt = 1.0 / steps
+    traj = [x_t.clone()]
+    for i in range(steps):
+        t_now = torch.ones(batch_size, 1) * (i / steps)
+        velocity = actor(x_t, t_now)
+        x_t = x_t + velocity * dt
+        traj.append(x_t.clone())
+    return x_t, traj
+
+# 生成可视化样本
+_, trajectory = solve_ode_trajectory(actor, batch_size=200, steps=20)
+traj_np = torch.stack(trajectory).numpy() # [steps+1, batch, 2]
+
+plt.figure(figsize=(6, 6))
+# 随机选 50 条轨迹绘制
+for i in range(50):
+    plt.plot(traj_np[:, i, 0], traj_np[:, i, 1], alpha=0.3, color='black', linewidth=0.5)
+    
+plt.scatter(traj_np[0, :50, 0], traj_np[0, :50, 1], color='red', s=20, label='Start (Noise)')
+plt.scatter(traj_np[-1, :50, 0], traj_np[-1, :50, 1], color='blue', s=20, label='End (Generated)')
+circle = plt.Circle((0, 0), 1.0, color='gray', alpha=0.3, label='Obstacle')
+plt.gca().add_patch(circle)
+
+plt.title("Inference Trajectories (ODE Flow)")
+plt.legend()
+
+
+# %% [markdown]
+# ## 7. System 2 推理与可视化
 # 我们对比三种策略：
 # 1. **Raw Actor**: 原始行为克隆（应该绕得远）。
 # 2. **MSE Selection**: 用普通 Critic 筛选（可能提升不大）。
