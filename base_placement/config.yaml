@@ -1,0 +1,53 @@
+# 双臂 Rizon4 base 布局优化 — 全部可调参数
+robot:
+  urdf_path: /home/matthew/mindon/mindon_robotics/assets/resource/robot/rizon4/urdf/serial_rizon4_with_gripper.urdf
+  # 注意：部署到实机前应换成 flexiv_rdk Model::SyncURDF() 导出的标定 URDF
+
+map:
+  voxel_size: 0.05
+  n_dirs: 32          # Fibonacci 球面接近方向数
+  n_rolls: 8          # 绕接近轴 roll 档数
+  n_fk_samples: 10000000
+  n_workers: 28
+  dir: out_base_placement/maps
+
+task:  # 合成任务点（真实 UMI 轨迹到位后换 loader）
+  z_table: 0.75
+  x_range: [0.4, 0.9]
+  y_left: [0.1, 0.4]
+  y_right: [-0.4, -0.1]
+  y_shared: [-0.15, 0.15]
+  z_above: [0.05, 0.35]
+  n_per_arm: 150
+  n_shared: 100
+  seed: 42
+
+layout:
+  x_base: 0.0
+  z_base: 1.4
+  pitch: 1.57          # 水平朝前安装（与现有 URDF 一致），theta = 向内 roll
+  d_range: [0.4, 1.6]
+  theta_range: [0.0, 1.8]
+  grid_d: 13
+  grid_theta: 13
+
+scoring:
+  alpha_manip: 1.0
+  beta_table: 0.5
+  d_ref_table: 0.15
+  lambda_self: 2.0
+  lambda_overlap: 0.0   # overlap 仅输出分项，不进总分（拷问决策）
+  d_self_safe: 0.05
+  w_overlap_min: 0.2
+
+refine:
+  top_k: 8
+  n_seed: 10
+  tol_pos: 1.0e-3
+  tol_rot: 1.0e-2
+  max_iter: 100
+  kappa_max: 50.0
+  n_workers: 28
+
+output:
+  dir: out_base_placement
