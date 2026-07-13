@@ -30,6 +30,47 @@ def map_path(cfg, side):
     return os.path.join(cfg["map"]["dir"], f"capmap_{side}.npz")
 
 
+def cmd_task_aabb(cfg, cfg_path, hdf5_root, max_files=None, margin=0.0):
+    """用真实 hdf5 采集数据里的 eef AABB 更新 config.yaml 的 task 区间。"""
+    from .hdf5_eef_workspace import scan_workspace
+
+    result = scan_workspace(hdf5_root, max_files=max_files, arms="both")
+    left_aabb, right_aabb = result["left_aabb"], result["right_aabb"]
+    if left_aabb is None or right_aabb is None:
+        sys.exit("左/右臂 AABB 数据不足，无法更新 task 配置")
+
+    z_table = cfg["task"]["z_table"]
+    x_lo = min(left_aabb["min"][0], right_aabb["min"][0]) - margin
+    x_hi = max(left_aabb["max"][0], right_aabb["max"][0]) + margin
+    y_left = [left_aabb["min"][1] - margin, left_aabb["max"][1] + margin]
+    y_right = [right_aabb["min"][1] - margin, right_aabb["max"][1] + margin]
+    z_lo = min(left_aabb["min"][2], right_aabb["min"][2])
+    z_hi = max(left_aabb["max"][2], right_aabb["max"][2])
+    z_above = [z_lo - z_table - margin, z_hi - z_table + margin]
+
+    from ruamel.yaml import YAML
+    from ruamel.yaml.comments import CommentedSeq
+    yaml_rt = YAML()
+    yaml_rt.width = 4096  # 避免把 urdf_path 等无关长字符串行折行
+
+    def _flow_seq(values):
+        seq = CommentedSeq(values)
+        seq.fa.set_flow_style()
+        return seq
+
+    with open(cfg_path) as f:
+        doc = yaml_rt.load(f)
+    doc["task"]["x_range"] = _flow_seq([round(x_lo, 4), round(x_hi, 4)])
+    doc["task"]["y_left"] = _flow_seq([round(y_left[0], 4), round(y_left[1], 4)])
+    doc["task"]["y_right"] = _flow_seq([round(y_right[0], 4), round(y_right[1], 4)])
+    doc["task"]["z_above"] = _flow_seq([round(z_above[0], 4), round(z_above[1], 4)])
+    with open(cfg_path, "w") as f:
+        yaml_rt.dump(doc, f)
+    print(f"已用 {hdf5_root} 的真实 eef AABB 更新 {cfg_path} 的 task 区间：\n"
+          f"  x_range={doc['task']['x_range']} y_left={doc['task']['y_left']} "
+          f"y_right={doc['task']['y_right']} z_above={doc['task']['z_above']}")
+
+
 def cmd_build_map(cfg):
     from .capability_map import build_capability_map, self_check
     from .robot_model import ArmModel
@@ -219,10 +260,20 @@ def cmd_refine(cfg):
 
 def main():
     ap = argparse.ArgumentParser(description="Rizon4 base 布局优化管线")
-    ap.add_argument("cmd", choices=["build-map", "scan", "refine", "all"])
+    ap.add_argument("cmd", choices=["build-map", "scan", "refine", "all", "task-aabb"])
     ap.add_argument("--config", default=None)
+    ap.add_argument("--hdf5-root", default=None, help="task-aabb 用：真实采集 hdf5 数据集根目录")
+    ap.add_argument("--max-files", type=int, default=None, help="task-aabb 用：调试时只处理前 N 个文件")
+    ap.add_argument("--margin", type=float, default=0.0, help="task-aabb 用：AABB 四周留的安全余量(m)")
     args = ap.parse_args()
+    cfg_path = args.config or os.path.join(PKG_DIR, "config.yaml")
     cfg = load_cfg(args.config)
+
+    if args.cmd == "task-aabb":
+        if not args.hdf5_root:
+            sys.exit("task-aabb 需要 --hdf5-root <数据集根目录>")
+        cmd_task_aabb(cfg, cfg_path, args.hdf5_root, max_files=args.max_files, margin=args.margin)
+        return
 
     if args.cmd in ("build-map", "all"):
         if args.cmd == "all" and all(
