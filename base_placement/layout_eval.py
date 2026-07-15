@@ -91,18 +91,28 @@ class LayoutEvaluator:
     # ---------- 布局评分 ----------
 
     def score_layout(self, d: float, theta: float) -> dict:
+        """用构造时传入的 self.tasks 打分（原有 (d,θ) 扫描入口，行为不变）。"""
+        return self.score_layout_with_tasks(d, theta, self.tasks)
+
+    def score_layout_with_tasks(self, d: float, theta: float,
+                                tasks: TaskSet) -> dict:
+        """对指定任务集打分：score_layout 的主体，任务集参数化。
+
+        供"操作区中心 p 搜索"复用——布局固定、任务集平移时，
+        变换到臂 base 系之后的查表/碰撞/打分逻辑完全同构。
+        """
         p = self.p
         T_W = {s: make_base_pose(s, d, theta, p.x_base, p.z_base, p.pitch)
                   .homogeneous
                for s in ("left", "right")}
 
-        eL = self._eval_arm("left", T_W["left"], self.tasks.left)
-        eR = self._eval_arm("right", T_W["right"], self.tasks.right)
-        sL = self._eval_arm("left", T_W["left"], self.tasks.shared)
-        sR = self._eval_arm("right", T_W["right"], self.tasks.shared)
+        eL = self._eval_arm("left", T_W["left"], tasks.left)
+        eR = self._eval_arm("right", T_W["right"], tasks.right)
+        sL = self._eval_arm("left", T_W["left"], tasks.shared)
+        sR = self._eval_arm("right", T_W["right"], tasks.shared)
 
         # 臂间自碰撞初筛：left[i] 与 right[i] 配对（双方都可达才有意义）
-        n_pair = min(len(self.tasks.left), len(self.tasks.right))
+        n_pair = min(len(tasks.left), len(tasks.right))
         both = eL["reachable"][:n_pair] & eR["reachable"][:n_pair]
         n_coll = 0
         pair_dists = np.full(n_pair, np.nan)
@@ -119,8 +129,8 @@ class LayoutEvaluator:
                     & (sR["w_norm"] >= p.w_overlap_min)
         overlap_quality = float(np.average(hq)) if len(hq) else 0.0
 
-        qual_L = float(np.average(eL["quality"], weights=self.tasks.w_left))
-        qual_R = float(np.average(eR["quality"], weights=self.tasks.w_right))
+        qual_L = float(np.average(eL["quality"], weights=tasks.w_left))
+        qual_R = float(np.average(eR["quality"], weights=tasks.w_right))
         score = (qual_L + qual_R
                  - p.lambda_self * coll_rate
                  + p.lambda_overlap * overlap_quality)
@@ -158,10 +168,40 @@ class LayoutEvaluator:
                           f"coll={r['collision_rate']:.1%}")
         return results
 
+    def scan_region_grid(self, d_fixed: float, theta_fixed: float,
+                         base_tasks: TaskSet,
+                         px_values: np.ndarray, pz_values: np.ndarray,
+                         z_offset: float = 0.0,
+                         verbose: bool = True) -> list[dict]:
+        """布局 (d,θ) 固定，扫描操作区中心 p=(px, pz) 网格。
+
+        base_tasks 为局部系任务集（centered_taskset，AABB 中心为原点、
+        桌面 z=0），每个候选做刚性平移 [px, 0, z_offset + pz] 后打分。
+        py 恒为 0：双臂沿 xz 平面对称布置且合成任务集左右对称，Score 关于
+        py=0 镜像对称，扫 y 无信息量（真实非对称任务接入后再议）。
+        z_offset 传 z_table：pz 是相对"桌面基准高度"的偏移，pz=0 即现状。
+        pz_values 为单元素时自然退化为纯 x 的 1D 搜索，无需特判。
+        """
+        results = []
+        total = len(px_values) * len(pz_values)
+        for a, px in enumerate(px_values):
+            for b, pz in enumerate(pz_values):
+                tasks_p = base_tasks.translated(
+                    [float(px), 0.0, z_offset + float(pz)])
+                r = self.score_layout_with_tasks(d_fixed, theta_fixed, tasks_p)
+                r["px"], r["pz"] = float(px), float(pz)
+                results.append(r)
+                if verbose:
+                    k = a * len(pz_values) + b + 1
+                    print(f"[{k}/{total}] px={px:.2f} pz={pz:.2f} "
+                          f"score={r['score']:.3f} reach={r['reach_rate']:.1%} "
+                          f"coll={r['collision_rate']:.1%}")
+        return results
+
 
 def _smoke():
     from .robot_model import arm_kwargs_from_cfg, load_robot_cfg
-    from .task_points import synthetic_taskset
+    from .task_points import centered_taskset, synthetic_taskset
     cl = CapabilityMap.load("out_base_placement/maps/capmap_left.npz")
     cr = CapabilityMap.load("out_base_placement/maps/capmap_right.npz")
     akw = arm_kwargs_from_cfg(load_robot_cfg())
@@ -172,6 +212,16 @@ def _smoke():
     print(f"单布局耗时 {time.time()-t0:.2f}s")
     for k, v in r.items():
         print(f"  {k}: {v:.4f}" if isinstance(v, float) else f"  {k}: {v}")
+
+    # region 冒烟：小任务集 + 3×2 的 (px,pz) 网格
+    base = centered_taskset(n_per_arm=20, n_shared=10)
+    rr = ev.scan_region_grid(0.6, 0.5, base,
+                             np.linspace(0.5, 1.1, 3), np.array([0.0, 0.2]),
+                             z_offset=0.75)
+    assert len(rr) == 6 and all("px" in x and "pz" in x for x in rr)
+    best = max(rr, key=lambda x: x["score"])
+    print(f"region 冒烟 best: px={best['px']:.2f} pz={best['pz']:.2f} "
+          f"score={best['score']:.3f}")
 
 
 if __name__ == "__main__":

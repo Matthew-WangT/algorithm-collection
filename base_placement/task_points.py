@@ -15,7 +15,7 @@ z 轴 = 手指闭合方向。顶抓 = x 轴朝下 (0,0,-1)。
 
 from __future__ import annotations
 
-from dataclasses import dataclass, field
+from dataclasses import dataclass, field, replace
 
 import numpy as np
 
@@ -36,6 +36,30 @@ class TaskSet:
             self.w_right = np.ones(len(self.right))
         if self.w_shared is None:
             self.w_shared = np.ones(len(self.shared))
+
+    def translated(self, p: np.ndarray) -> "TaskSet":
+        """返回所有位姿刚性平移 p（3 维）后的新 TaskSet。
+
+        用于"最佳操作区域中心 p 搜索"：局部系任务集只生成一次（固定 seed），
+        不同候选 p 之间只平移不重采样，消除采样方差、保证候选可比。
+        旋转与权重不变；返回副本，不原地修改。
+        """
+        p = np.asarray(p, dtype=float).reshape(3)
+
+        def _shift(T: np.ndarray) -> np.ndarray:
+            T2 = T.copy()
+            T2[:, :3, 3] += p
+            return T2
+
+        return replace(
+            self,
+            left=_shift(self.left),
+            right=_shift(self.right),
+            shared=_shift(self.shared),
+            w_left=self.w_left.copy(),
+            w_right=self.w_right.copy(),
+            w_shared=self.w_shared.copy(),
+        )
 
 
 def _pose(position: np.ndarray, approach: np.ndarray, closing_ref: np.ndarray
@@ -110,6 +134,43 @@ def synthetic_taskset(
     return TaskSet(left=left, right=right, shared=shared)
 
 
+def centered_taskset(
+    aabb_size=(0.5, 0.9),
+    z_above=(0.05, 0.35),
+    split_ratio=(0.4, 0.4),
+    n_per_arm: int = 150,
+    n_shared: int = 100,
+    seed: int = 42,
+) -> TaskSet:
+    """在局部系生成任务点：原点为操作区 AABB 中心，z=0 平面为桌面。
+
+    用于"最佳操作区域中心 p 搜索"模式：任务点只在局部系生成一次，
+    配合 TaskSet.translated([px, 0, z_table + pz]) 平移到世界系候选中心，
+    姿态采样逻辑与 synthetic_taskset 完全一致（同用 _sample_grasp_poses）。
+
+    参数：
+    - aabb_size = (Lx, Ly)：操作区 AABB 的 x/y 向尺寸 (m)；z 向高度带由
+      z_above 给出（相对桌面，同 task.z_above 语义）。
+    - split_ratio = (arm_frac, shared_frac)：沿 y 向三分区比例。左臂带占
+      +y 侧 arm_frac*Ly，右臂带对称占 -y 侧，共享带为中央 shared_frac*Ly
+      （允许与左右带部分重叠，保持现有三分区结构）。
+    """
+    Lx, Ly = float(aabb_size[0]), float(aabb_size[1])
+    arm_frac, shared_frac = float(split_ratio[0]), float(split_ratio[1])
+    rng = np.random.default_rng(seed)
+
+    x_range = (-Lx / 2, Lx / 2)
+    y_left = (Ly / 2 - arm_frac * Ly, Ly / 2)             # +y 侧带
+    y_right = (-Ly / 2, -Ly / 2 + arm_frac * Ly)          # -y 侧带（对称）
+    y_shared = (-shared_frac * Ly / 2, shared_frac * Ly / 2)
+    z_range = (float(z_above[0]), float(z_above[1]))      # 桌面 z=0 基准
+
+    left = _sample_grasp_poses(n_per_arm, x_range, y_left, z_range, rng)
+    right = _sample_grasp_poses(n_per_arm, x_range, y_right, z_range, rng)
+    shared = _sample_grasp_poses(n_shared, x_range, y_shared, z_range, rng)
+    return TaskSet(left=left, right=right, shared=shared)
+
+
 def load_umi_taskset(path: str, fmt: str = "npz") -> TaskSet:
     """UMI 轨迹 loader（预留）。
 
@@ -132,6 +193,25 @@ def _self_test():
     assert n_down >= 100, f"顶抓比例异常: {n_down}"
     # 位置都在任务区内
     assert ts.left[:, 1, 3].min() >= 0.1 and ts.right[:, 1, 3].max() <= -0.1
+
+    # centered_taskset：局部系居中，x∈±Lx/2，左右臂 y 分居两侧，z 在高度带内
+    cs = centered_taskset(aabb_size=(0.5, 0.9), z_above=(0.05, 0.35),
+                          n_per_arm=20, n_shared=10, seed=1)
+    assert cs.left.shape == (20, 4, 4) and cs.shared.shape == (10, 4, 4)
+    eps = 1e-9
+    assert abs(cs.left[:, 0, 3]).max() <= 0.25 + eps
+    assert cs.left[:, 1, 3].min() > 0 and cs.right[:, 1, 3].max() < 0
+    assert cs.left[:, 2, 3].min() >= 0.05 - eps
+    assert cs.left[:, 2, 3].max() <= 0.35 + eps
+
+    # translated：刚性平移，旋转/权重原样带过去，返回副本不改原对象
+    p = np.array([0.9, 0.0, 0.8])
+    orig = cs.left.copy()
+    ct = cs.translated(p)
+    assert np.allclose(ct.left[:, :3, 3], cs.left[:, :3, 3] + p)
+    assert np.allclose(ct.right[:, :3, :3], cs.right[:, :3, :3])
+    assert np.allclose(ct.w_shared, cs.w_shared) and ct.w_left is not cs.w_left
+    assert np.allclose(cs.left, orig)  # 原对象未被修改
     print("task_points self-test OK")
 
 

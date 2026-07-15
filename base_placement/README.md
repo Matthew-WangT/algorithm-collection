@@ -18,6 +18,23 @@
 `figs/scan_heatmaps.png`（主交付物）、`figs/capmap_*_D.png`、
 `figs/best_layout_3d.png`、`scan_results.json`、`report.json`。
 
+### 操作区中心 p 搜索模式（独立工作流，不进 `all`）
+
+布局 `(d,θ)` 固定为 `region_search.d_fixed/theta_fixed`，反过来搜索
+操作区 AABB 最佳中心 `p=(px,pz)`（py 恒为 0：双臂对称布置 + 对称任务集
+使 Score 关于 py=0 镜像对称；pz 为相对桌面基准的偏移，`pz_range` 单值时
+退化为纯 x 的 1D 搜索）。任务点在局部系只生成一次，候选间仅刚性平移，
+能力图与评分公式复用，无需重建。
+
+```bash
+python -m base_placement.run_pipeline scan-region    # p 网格粗扫
+python -m base_placement.run_pipeline refine-region  # top-k 候选 p 直接 IK 精评
+```
+
+输出：`scan_region_results.json`、`figs/scan_region_heatmaps.png`
+（pz 单值时为"指标 vs px"曲线图）、`report_region.md/json`、
+`figs/best_region_3d.png`。
+
 ## 模块
 
 | 文件 | 职责 |

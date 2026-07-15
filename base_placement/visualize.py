@@ -61,39 +61,80 @@ def plot_capmap_slices(cmap, save_path: str):
     print(f"saved {save_path}")
 
 
-def plot_scan_heatmaps(results: list[dict], d_values, theta_values,
-                       save_path: str):
-    """(d,θ) 总分 + 分项指标热力图，标最优点。"""
-    metrics = [("score", "Score (total)"),
-               ("reach_rate", "Reach rate"),
-               ("mean_w", "Mean manipulability (norm.)"),
-               ("collision_rate", "Arm-arm collision rate"),
-               ("mean_table_margin", "Mean table margin (m)"),
-               ("overlap_quality", "Overlap quality (shared)")]
-    nd, nt = len(d_values), len(theta_values)
-    grids = {k: np.full((nd, nt), np.nan) for k, _ in metrics}
-    lut = {(round(r["d"], 4), round(r["theta"], 4)): r for r in results}
-    for i, d in enumerate(d_values):
-        for j, t in enumerate(theta_values):
-            r = lut[(round(float(d), 4), round(float(t), 4))]
-            for k, _ in metrics:
+SCAN_METRICS = [("score", "Score (total)"),
+                ("reach_rate", "Reach rate"),
+                ("mean_w", "Mean manipulability (norm.)"),
+                ("collision_rate", "Arm-arm collision rate"),
+                ("mean_table_margin", "Mean table margin (m)"),
+                ("overlap_quality", "Overlap quality (shared)")]
+
+
+def plot_scan_heatmaps(results: list[dict], y_values, x_values,
+                       save_path: str,
+                       y_key: str = "d", x_key: str = "theta",
+                       xlabel: str = "theta / inward roll (rad)",
+                       ylabel: str = "d / base spacing (m)",
+                       suptitle: str | None = None):
+    """总分 + 分项指标热力图，标最优点。
+
+    默认参数对应原有 (d,θ) 布局扫描（行=d、列=θ，向后兼容）；
+    region 模式传 y_key/x_key="pz"/"px" 与相应标签即可复用。
+    """
+    ny, nx = len(y_values), len(x_values)
+    grids = {k: np.full((ny, nx), np.nan) for k, _ in SCAN_METRICS}
+    lut = {(round(r[y_key], 4), round(r[x_key], 4)): r for r in results}
+    for i, yv in enumerate(y_values):
+        for j, xv in enumerate(x_values):
+            r = lut[(round(float(yv), 4), round(float(xv), 4))]
+            for k, _ in SCAN_METRICS:
                 grids[k][i, j] = r[k]
     best = max(results, key=lambda r: r["score"])
 
     fig, axes = plt.subplots(2, 3, figsize=(15, 8.5))
-    ext = [theta_values[0], theta_values[-1], d_values[0], d_values[-1]]
-    for ax, (k, title) in zip(axes.ravel(), metrics):
+    ext = [x_values[0], x_values[-1], y_values[0], y_values[-1]]
+    for ax, (k, title) in zip(axes.ravel(), SCAN_METRICS):
         im = ax.imshow(grids[k], origin="lower", extent=ext, aspect="auto",
                        cmap=SEQ_BLUE)
-        ax.plot(best["theta"], best["d"], marker="*", ms=16, mec="white",
+        ax.plot(best[x_key], best[y_key], marker="*", ms=16, mec="white",
                 mfc=C_BAD, mew=1.2)
-        ax.set_xlabel("theta / inward roll (rad)", color=INK2, fontsize=9)
-        ax.set_ylabel("d / base spacing (m)", color=INK2, fontsize=9)
+        ax.set_xlabel(xlabel, color=INK2, fontsize=9)
+        ax.set_ylabel(ylabel, color=INK2, fontsize=9)
         ax.set_title(title, color=INK, fontsize=10)
         fig.colorbar(im, ax=ax, shrink=0.9, aspect=18)
         _style_ax(ax)
-    fig.suptitle(f"Base layout scan — best: d={best['d']:.2f} m, "
-                 f"theta={best['theta']:.2f} rad (star)", color=INK, fontsize=12)
+    if suptitle is None:
+        suptitle = (f"Base layout scan — best: d={best['d']:.2f} m, "
+                    f"theta={best['theta']:.2f} rad (star)")
+    fig.suptitle(suptitle, color=INK, fontsize=12)
+    fig.tight_layout()
+    fig.savefig(save_path, dpi=150, bbox_inches="tight")
+    plt.close(fig)
+    print(f"saved {save_path}")
+
+
+def plot_region_curves(results: list[dict], px_values, save_path: str,
+                       suptitle: str | None = None):
+    """region 模式 pz 退化为单值时的 1D 视图：各指标 vs px 曲线。
+
+    指标集与热力图版一致（六项），最优 px（总分最高）以竖虚线标出。
+    """
+    lut = {round(r["px"], 4): r for r in results}
+    rows = [lut[round(float(px), 4)] for px in px_values]
+    best = max(results, key=lambda r: r["score"])
+
+    fig, axes = plt.subplots(2, 3, figsize=(15, 7.5))
+    for ax, (k, title) in zip(axes.ravel(), SCAN_METRICS):
+        ax.plot(px_values, [r[k] for r in rows], color=C_LEFT,
+                marker="o", ms=3.5, linewidth=1.6)
+        ax.axvline(best["px"], color=C_BAD, linestyle="--", linewidth=1.2,
+                   label=f"best px={best['px']:.2f}")
+        ax.set_xlabel("px (m)", color=INK2, fontsize=9)
+        ax.set_title(title, color=INK, fontsize=10)
+        ax.legend(fontsize=8, loc="best")
+        _style_ax(ax)
+    if suptitle is None:
+        suptitle = f"Region scan (1D) — best px={best['px']:.2f} m"
+    fig.suptitle(suptitle, color=INK, fontsize=12)
     fig.tight_layout()
     fig.savefig(save_path, dpi=150, bbox_inches="tight")
     plt.close(fig)

@@ -6,6 +6,8 @@
   python -m base_placement.run_pipeline build-map      # 仅建能力图
   python -m base_placement.run_pipeline scan           # 粗网格扫描 + 热力图
   python -m base_placement.run_pipeline refine         # top-k 直接 IK 精评 + 报告
+  python -m base_placement.run_pipeline scan-region    # (d,θ) 固定，扫操作区中心 p=(px,pz)
+  python -m base_placement.run_pipeline refine-region  # top-k 候选 p 精评 + 报告
 """
 
 from __future__ import annotations
@@ -268,9 +270,203 @@ def cmd_refine(cfg):
           f"报告已存 {out_dir}/report.md")
 
 
+def _load_maps(cfg):
+    """只加载左右能力图（region 模式任务集另行生成，不走 _load_maps_tasks）。"""
+    from .capability_map import CapabilityMap
+    return (CapabilityMap.load(map_path(cfg, "left")),
+            CapabilityMap.load(map_path(cfg, "right")))
+
+
+def _region_base_tasks(cfg):
+    """region 模式的局部系任务集：尺寸/分区来自 region_search 段，
+    点数、高度带与 seed 复用 task 段（与 (d,θ) 模式同一采样口径）。"""
+    from .task_points import centered_taskset
+    rs, t = cfg["region_search"], cfg["task"]
+    return centered_taskset(
+        aabb_size=tuple(rs["aabb_size"]), z_above=tuple(t["z_above"]),
+        split_ratio=tuple(rs["split_ratio"]),
+        n_per_arm=t["n_per_arm"], n_shared=t["n_shared"], seed=t["seed"])
+
+
+def _region_grid(cfg):
+    rs = cfg["region_search"]
+    return (np.linspace(*rs["px_range"], rs["grid_px"]),
+            np.linspace(*rs["pz_range"], rs["grid_pz"]))
+
+
+def cmd_scan_region(cfg):
+    """布局 (d,θ) 固定，扫描操作区中心 p=(px,pz) 网格（py 恒为 0）。"""
+    from .layout_eval import LayoutEvaluator
+    from .visualize import plot_region_curves, plot_scan_heatmaps
+    cl, cr = _load_maps(cfg)
+    base = _region_base_tasks(cfg)
+    rs, t = cfg["region_search"], cfg["task"]
+    out_dir = cfg["output"]["dir"]
+    figs = os.path.join(out_dir, "figs")
+    os.makedirs(figs, exist_ok=True)
+
+    ev = LayoutEvaluator(cl, cr, base, _scoring_params(cfg), **_arm_kwargs(cfg))
+    px_vals, pz_vals = _region_grid(cfg)
+    results = ev.scan_region_grid(
+        rs["d_fixed"], rs["theta_fixed"], base, px_vals, pz_vals,
+        z_offset=t["z_table"])
+    with open(os.path.join(out_dir, "scan_region_results.json"), "w") as f:
+        json.dump(results, f, indent=1)
+
+    best = max(results, key=lambda r: r["score"])
+    fixed_txt = f"d={rs['d_fixed']:.2f} m, θ={rs['theta_fixed']:.2f} rad fixed"
+    if len(pz_vals) > 1:
+        # 2D (px,pz) 网格 → 热力图（x 轴 px、y 轴 pz，与 d/θ 图同构复用）
+        plot_scan_heatmaps(
+            results, pz_vals, px_vals,
+            os.path.join(figs, "scan_region_heatmaps.png"),
+            y_key="pz", x_key="px", xlabel="px (m)", ylabel="pz (m)",
+            suptitle=(f"Region scan ({fixed_txt}) — best "
+                      f"p=({best['px']:.2f}, {best['pz']:.2f}) m (star)"))
+    else:
+        # pz 单值 → 退化为 1D x 搜索，画指标 vs px 曲线
+        plot_region_curves(
+            results, px_vals,
+            os.path.join(figs, "scan_region_heatmaps.png"),
+            suptitle=(f"Region scan ({fixed_txt}, pz={pz_vals[0]:.2f}) — "
+                      f"best px={best['px']:.2f} m"))
+    print(f"scan-region best: px={best['px']:.2f} pz={best['pz']:.2f} "
+          f"score={best['score']:.3f}")
+    return results
+
+
+def cmd_refine_region(cfg):
+    """region 模式 top-k 候选 p 的直接 IK 精评 + 报告。"""
+    from .layout_eval import LayoutEvaluator
+    from .refine_ik import refine_layout
+    from .robot_model import make_base_pose
+    from .visualize import plot_layout_3d
+
+    out_dir = cfg["output"]["dir"]
+    figs = os.path.join(out_dir, "figs")
+    os.makedirs(figs, exist_ok=True)
+    with open(os.path.join(out_dir, "scan_region_results.json")) as f:
+        results = json.load(f)
+    results.sort(key=lambda r: r["score"], reverse=True)
+    rs, t, s_cfg, L = (cfg["region_search"], cfg["task"], cfg["scoring"],
+                       cfg["layout"])
+    top = results[: rs["top_k"]]
+
+    cl, cr = _load_maps(cfg)
+    base = _region_base_tasks(cfg)
+    akw = _arm_kwargs(cfg)
+    ev = LayoutEvaluator(cl, cr, base, _scoring_params(cfg), **akw)
+    r_cfg = cfg["refine"]
+    w_ref = {"left": cl.w98, "right": cr.w98}
+    d_fixed, th_fixed = rs["d_fixed"], rs["theta_fixed"]
+
+    refined = []
+    for k, cand in enumerate(top):
+        px, pz = cand["px"], cand["pz"]
+        tasks_p = base.translated([px, 0.0, t["z_table"] + pz])
+        # 查表代表 q 作 warm-start（与 cmd_refine 同一套查表，任务点用平移后的）
+        q_warms = {}
+        for gname, side, targets in [
+                ("left", "left", tasks_p.left), ("right", "right", tasks_p.right),
+                ("shared_left", "left", tasks_p.shared),
+                ("shared_right", "right", tasks_p.shared)]:
+            T_W = make_base_pose(side, d_fixed, th_fixed, L["x_base"],
+                                 L["z_base"], L["pitch"]).homogeneous
+            T_B = np.einsum("ij,njk->nik", np.linalg.inv(T_W), targets)
+            cm = cl if side == "left" else cr
+            q_warms[gname] = cm.query(T_B[:, :3, 3], T_B[:, :3, :3])["q_repr"]
+
+        out = refine_layout(
+            d_fixed, th_fixed, tasks_p, w_ref, akw["urdf_path"],
+            z_table=t["z_table"], x_base=L["x_base"], z_base=L["z_base"],
+            pitch=L["pitch"], q_warms=q_warms, n_seed=r_cfg["n_seed"],
+            tol_pos=r_cfg["tol_pos"], tol_rot=r_cfg["tol_rot"],
+            max_iter=r_cfg["max_iter"], d_self_safe=s_cfg["d_self_safe"],
+            kappa_max=r_cfg["kappa_max"],
+            base_frame=akw["base_frame"], ee_frame=akw["ee_frame"],
+            joint_prefix=akw["joint_prefix"],
+            n_workers=r_cfg["n_workers"], seed=100 + k)
+        s = out["summary"]
+        s["px"], s["pz"] = px, pz
+        # 精评总分：与 cmd_refine 的 score_refined 同一结构（不引入 overlap 项）
+        qual = (s["mean_w_left"] * s["reach_rate_left"]
+                + s["mean_w_right"] * s["reach_rate_right"])
+        s["score_refined"] = (
+            qual - s_cfg["lambda_self"] * s["collision_rate"]
+            - 0.5 * (s["kappa_bad_rate_left"] + s["kappa_bad_rate_right"]))
+        s["score_scan"] = cand["score"]
+        refined.append((s, out, tasks_p))
+        print(f"[refine-region {k+1}/{len(top)}] px={px:.2f} pz={pz:.2f} "
+              f"reach={s['reach_rate']:.1%} coll={s['collision_rate']:.1%} "
+              f"score_refined={s['score_refined']:.3f}")
+
+    refined.sort(key=lambda x: x[0]["score_refined"], reverse=True)
+    best_s, best_out, best_tasks = refined[0]
+
+    # 交叉验证：查表可达性 vs IK 可达性（最优 p，同一平移后任务集）
+    scan_best = ev.score_layout_with_tasks(d_fixed, th_fixed, best_tasks)
+    agree = {
+        "scan_reach_rate": scan_best["reach_rate"],
+        "ik_reach_rate": best_s["reach_rate"],
+        "note": "FK 采样图为保守估计，scan ≤ ik 为正常方向",
+    }
+
+    plot_layout_3d(best_out, best_tasks, t["z_table"],
+                   os.path.join(figs, "best_region_3d.png"),
+                   f"Best region center: p=({best_s['px']:.2f}, "
+                   f"{best_s['pz']:.2f}) m (d={d_fixed:.2f}, "
+                   f"θ={th_fixed:.2f} fixed)")
+
+    def _clean(d_):
+        return {k: v for k, v in d_.items() if not isinstance(v, np.ndarray)}
+    report = {
+        "best": _clean(best_s),
+        "fixed_layout": {"d": d_fixed, "theta": th_fixed},
+        "top_k": [_clean(s) for s, _, _ in refined],
+        "cross_validation": agree,
+    }
+    with open(os.path.join(out_dir, "report_region.json"), "w") as f:
+        json.dump(report, f, indent=1)
+
+    lines = [
+        "# 双臂操作区中心 p 搜索报告\n",
+        f"**固定布局：d = {d_fixed:.2f} m，theta = {th_fixed:.2f} rad**\n",
+        f"**最优操作区中心：p = ({best_s['px']:.2f}, {best_s['pz']:.2f}) m "
+        f"(px, pz；py 恒为 0，pz 相对桌面基准)**\n",
+        "## 最优 p 指标（直接 IK 精评）\n",
+        f"- 可达率: {best_s['reach_rate']:.1%}"
+        f"（左 {best_s['reach_rate_left']:.1%} / 右 {best_s['reach_rate_right']:.1%}）",
+        f"- 平均归一化可操作度: 左 {best_s['mean_w_left']:.3f} / "
+        f"右 {best_s['mean_w_right']:.3f}",
+        f"- 臂间自碰撞率(配对, <{s_cfg['d_self_safe']*100:.0f}cm): "
+        f"{best_s['collision_rate']:.1%}",
+        f"- 高条件数占比(κ>{r_cfg['kappa_max']}): "
+        f"左 {best_s['kappa_bad_rate_left']:.1%} / 右 {best_s['kappa_bad_rate_right']:.1%}",
+        f"- 平均桌面裕度: {best_s['mean_table_margin']:.3f} m",
+        f"- 共享区双臂可达率: {best_s['shared_both_reach']:.1%}\n",
+        "## 查表 vs IK 交叉验证（最优 p）\n",
+        f"- 查表可达率 {agree['scan_reach_rate']:.1%} ≤ "
+        f"IK 可达率 {agree['ik_reach_rate']:.1%}（{agree['note']}）\n",
+        "## Top-k 候选 p 对比\n",
+        "| # | px (m) | pz (m) | 粗扫分 | 精评分 | 可达率 | 碰撞率 |",
+        "|---|--------|--------|--------|--------|--------|--------|",
+    ]
+    for i, (s, _, _) in enumerate(refined):
+        lines.append(f"| {i+1} | {s['px']:.2f} | {s['pz']:.2f} | "
+                     f"{s['score_scan']:.3f} | {s['score_refined']:.3f} | "
+                     f"{s['reach_rate']:.1%} | {s['collision_rate']:.1%} |")
+    lines += ["", "图表见 `figs/`：`scan_region_heatmaps.png`（主交付物）、"
+              "`best_region_3d.png`。"]
+    with open(os.path.join(out_dir, "report_region.md"), "w") as f:
+        f.write("\n".join(lines))
+    print(f"\n最优: p=({best_s['px']:.2f}, {best_s['pz']:.2f}) m; "
+          f"报告已存 {out_dir}/report_region.md")
+
+
 def main():
     ap = argparse.ArgumentParser(description="Rizon4 base 布局优化管线")
-    ap.add_argument("cmd", choices=["build-map", "scan", "refine", "all", "task-aabb"])
+    ap.add_argument("cmd", choices=["build-map", "scan", "refine", "all",
+                                    "scan-region", "refine-region", "task-aabb"])
     ap.add_argument("--config", default=None)
     ap.add_argument("--hdf5-root", default=None, help="task-aabb 用：真实采集 hdf5 数据集根目录")
     ap.add_argument("--max-files", type=int, default=None, help="task-aabb 用：调试时只处理前 N 个文件")
@@ -295,6 +491,11 @@ def main():
         cmd_scan(cfg)
     if args.cmd in ("refine", "all"):
         cmd_refine(cfg)
+    # region 模式是独立工作流，不进 all，显式调用
+    if args.cmd == "scan-region":
+        cmd_scan_region(cfg)
+    if args.cmd == "refine-region":
+        cmd_refine_region(cfg)
 
 
 if __name__ == "__main__":

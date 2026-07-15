@@ -36,6 +36,18 @@ layout:
   grid_d: 13
   grid_theta: 13
 
+region_search:  # 新模式：布局 (d,θ) 固定，搜索操作区 AABB 最佳中心 p=(px,pz)，py 恒为 0
+  d_fixed: 0.60            # 固定布局：两臂间距
+  theta_fixed: 0.50        # 固定布局：向内 roll
+  aabb_size: [0.5, 0.9]    # 操作区 AABB 的 x/y 尺寸 (m)；z 向高度带复用 task.z_above
+  split_ratio: [0.4, 0.4]  # (arm_frac, shared_frac)：沿 y 向三分区比例
+  px_range: [-0.2, 0.6]
+  pz_range: [0.0, 0.0]     # 相对 z_table 桌面基准的偏移；单值区间 => 退化为 1D x 搜索
+  grid_px: 15
+  grid_pz: 1               # pz_range 为单值时设 1
+  top_k: 5                 # 精评候选数
+  # 任务点数量 (n_per_arm/n_shared)、z_table、z_above、seed 复用上面的 task 段
+
 scoring:
   alpha_manip: 1.0
   beta_table: 0.0
