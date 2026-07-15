@@ -23,7 +23,8 @@ import numpy as np
 from .capability_map import CapabilityMap
 from .capsules import (DEFAULT_RADII, capsule_capsule_min_distance,
                        chain_table_margin, transform_chain)
-from .robot_model import DEFAULT_URDF, ArmModel, make_base_pose
+from .robot_model import (DEFAULT_BASE_FRAME, DEFAULT_EE_FRAME,
+                          DEFAULT_JOINT_PREFIX, ArmModel, make_base_pose)
 from .task_points import TaskSet
 
 
@@ -45,12 +46,18 @@ class ScoringParams:
 class LayoutEvaluator:
     def __init__(self, cmap_left: CapabilityMap, cmap_right: CapabilityMap,
                  tasks: TaskSet, params: ScoringParams | None = None,
-                 urdf_path: str = DEFAULT_URDF):
+                 urdf_path: str | None = None,
+                 base_frame: str = DEFAULT_BASE_FRAME,
+                 ee_frame: str = DEFAULT_EE_FRAME,
+                 joint_prefix: str = DEFAULT_JOINT_PREFIX):
+        if urdf_path is None:
+            raise ValueError("LayoutEvaluator 需要 urdf_path（从 config.yaml 传入）")
         self.cmaps = {"left": cmap_left, "right": cmap_right}
-        # urdf_path 必须显式贯通：胶囊链 FK 用的 ArmModel 要与建图/精评同一 URDF，
-        # 否则会静默回退到 DEFAULT_URDF（换机器/换标定 URDF 时打分模型错配）。
-        self.arms = {"left": ArmModel("left", urdf_path),
-                     "right": ArmModel("right", urdf_path)}
+        # URDF/帧命名必须显式贯通：胶囊链 FK 用的 ArmModel 要与建图/精评同一模型，
+        # 否则打分模型与能力图错配。命名默认对应 rizon4，换机器人由 config 覆盖。
+        self.arms = {
+            "left": ArmModel("left", urdf_path, base_frame, ee_frame, joint_prefix),
+            "right": ArmModel("right", urdf_path, base_frame, ee_frame, joint_prefix)}
         self.tasks = tasks
         self.p = params or ScoringParams()
 
@@ -153,10 +160,12 @@ class LayoutEvaluator:
 
 
 def _smoke():
+    from .robot_model import arm_kwargs_from_cfg, load_robot_cfg
     from .task_points import synthetic_taskset
     cl = CapabilityMap.load("out_base_placement/maps/capmap_left.npz")
     cr = CapabilityMap.load("out_base_placement/maps/capmap_right.npz")
-    ev = LayoutEvaluator(cl, cr, synthetic_taskset())
+    akw = arm_kwargs_from_cfg(load_robot_cfg())
+    ev = LayoutEvaluator(cl, cr, synthetic_taskset(), **akw)
     import time
     t0 = time.time()
     r = ev.score_layout(0.6, 0.5)

@@ -71,17 +71,24 @@ def cmd_task_aabb(cfg, cfg_path, hdf5_root, max_files=None, margin=0.0):
           f"y_right={doc['task']['y_right']} z_above={doc['task']['z_above']}")
 
 
+def _arm_kwargs(cfg):
+    """从 config 的 robot 段取 ArmModel 关键字参数（urdf_path + 帧/关节命名）。"""
+    from .robot_model import arm_kwargs_from_cfg
+    return arm_kwargs_from_cfg(cfg["robot"])
+
+
 def cmd_build_map(cfg):
     from .capability_map import build_capability_map, self_check
     from .robot_model import ArmModel
     m = cfg["map"]
+    akw = _arm_kwargs(cfg)
     os.makedirs(m["dir"], exist_ok=True)
     for side in ("left", "right"):
         cm = build_capability_map(
-            side, urdf_path=cfg["robot"]["urdf_path"],
-            n_samples=int(m["n_fk_samples"]), voxel_size=m["voxel_size"],
-            n_dirs=m["n_dirs"], n_rolls=m["n_rolls"], n_workers=m["n_workers"])
-        self_check(cm, ArmModel(side, cfg["robot"]["urdf_path"]))
+            side, n_samples=int(m["n_fk_samples"]), voxel_size=m["voxel_size"],
+            n_dirs=m["n_dirs"], n_rolls=m["n_rolls"], n_workers=m["n_workers"],
+            **akw)
+        self_check(cm, ArmModel(side, **akw))
         cm.save(map_path(cfg, side))
         print(f"saved {map_path(cfg, side)}")
 
@@ -128,8 +135,7 @@ def cmd_scan(cfg):
     plot_capmap_slices(cl, os.path.join(figs, "capmap_left_D.png"))
     plot_capmap_slices(cr, os.path.join(figs, "capmap_right_D.png"))
 
-    ev = LayoutEvaluator(cl, cr, ts, _scoring_params(cfg),
-                         urdf_path=cfg["robot"]["urdf_path"])
+    ev = LayoutEvaluator(cl, cr, ts, _scoring_params(cfg), **_arm_kwargs(cfg))
     d_vals, th_vals = _grid(cfg)
     results = ev.scan_grid(d_vals, th_vals)
     with open(os.path.join(out_dir, "scan_results.json"), "w") as f:
@@ -157,8 +163,7 @@ def cmd_refine(cfg):
     top = results[: cfg["refine"]["top_k"]]
 
     cl, cr, ts = _load_maps_tasks(cfg)
-    ev = LayoutEvaluator(cl, cr, ts, _scoring_params(cfg),
-                         urdf_path=cfg["robot"]["urdf_path"])
+    ev = LayoutEvaluator(cl, cr, ts, _scoring_params(cfg), **_arm_kwargs(cfg))
     r_cfg, s_cfg, L = cfg["refine"], cfg["scoring"], cfg["layout"]
     w_ref = {"left": cl.w98, "right": cr.w98}
 
@@ -178,13 +183,16 @@ def cmd_refine(cfg):
             cm = cl if side == "left" else cr
             q_warms[gname] = cm.query(T_B[:, :3, 3], T_B[:, :3, :3])["q_repr"]
 
+        akw = _arm_kwargs(cfg)
         out = refine_layout(
-            d, th, ts, w_ref, cfg["robot"]["urdf_path"],
+            d, th, ts, w_ref, akw["urdf_path"],
             z_table=cfg["task"]["z_table"], x_base=L["x_base"],
             z_base=L["z_base"], pitch=L["pitch"], q_warms=q_warms,
             n_seed=r_cfg["n_seed"], tol_pos=r_cfg["tol_pos"],
             tol_rot=r_cfg["tol_rot"], max_iter=r_cfg["max_iter"],
             d_self_safe=s_cfg["d_self_safe"], kappa_max=r_cfg["kappa_max"],
+            base_frame=akw["base_frame"], ee_frame=akw["ee_frame"],
+            joint_prefix=akw["joint_prefix"],
             n_workers=r_cfg["n_workers"], seed=100 + k)
         s = out["summary"]
         # 精评总分（与粗扫同结构，含条件数惩罚）

@@ -20,7 +20,8 @@ import pinocchio as pin
 
 from .capsules import (DEFAULT_RADII, capsule_capsule_min_distance,
                        chain_table_margin, transform_chain)
-from .robot_model import ArmModel, make_base_pose
+from .robot_model import (DEFAULT_BASE_FRAME, DEFAULT_EE_FRAME,
+                          DEFAULT_JOINT_PREFIX, ArmModel, make_base_pose)
 from .task_points import TaskSet
 
 
@@ -77,9 +78,10 @@ def solve_point(arm: ArmModel, T_B_target: pin.SE3, q_warm: np.ndarray | None,
 _G: dict = {}
 
 
-def _init_worker(urdf_path: str):
-    _G["left"] = ArmModel("left", urdf_path)
-    _G["right"] = ArmModel("right", urdf_path)
+def _init_worker(urdf_path: str, base_frame: str, ee_frame: str,
+                 joint_prefix: str):
+    _G["left"] = ArmModel("left", urdf_path, base_frame, ee_frame, joint_prefix)
+    _G["right"] = ArmModel("right", urdf_path, base_frame, ee_frame, joint_prefix)
 
 
 def _solve_task(args):
@@ -101,8 +103,11 @@ def refine_layout(d: float, theta: float, tasks: TaskSet, w_ref: dict,
                   q_warms: dict | None = None,
                   n_seed: int = 10, tol_pos: float = 1e-3, tol_rot: float = 1e-2,
                   max_iter: int = 100, d_self_safe: float = 0.05,
-                  kappa_max: float = 50.0, n_workers: int = 16,
-                  seed: int = 7) -> dict:
+                  kappa_max: float = 50.0,
+                  base_frame: str = DEFAULT_BASE_FRAME,
+                  ee_frame: str = DEFAULT_EE_FRAME,
+                  joint_prefix: str = DEFAULT_JOINT_PREFIX,
+                  n_workers: int = 16, seed: int = 7) -> dict:
     """对单个布局做直接 IK 全评估。
 
     w_ref: {'left': w98, 'right': w98} 能力图归一化基准（与粗扫一致口径）。
@@ -128,7 +133,9 @@ def refine_layout(d: float, theta: float, tasks: TaskSet, w_ref: dict,
                          seed + len(jobs), tol_pos, tol_rot, max_iter))
             meta.append((gname, i))
 
-    with mp.Pool(n_workers, initializer=_init_worker, initargs=(urdf_path,)) as pool:
+    with mp.Pool(n_workers, initializer=_init_worker,
+                 initargs=(urdf_path, base_frame, ee_frame,
+                           joint_prefix)) as pool:
         outs = pool.map(_solve_task, jobs, chunksize=8)
 
     res = {g: {"reachable": [], "q": [], "w_norm": [], "kappa": [],
@@ -183,12 +190,15 @@ def refine_layout(d: float, theta: float, tasks: TaskSet, w_ref: dict,
 
 
 if __name__ == "__main__":
-    # 冒烟：单布局少量点
+    # 冒烟：单布局少量点（URDF/帧命名从 config.yaml 读取）
+    from .robot_model import arm_kwargs_from_cfg, load_robot_cfg
     from .task_points import synthetic_taskset
-    from .robot_model import DEFAULT_URDF
+    akw = arm_kwargs_from_cfg(load_robot_cfg())
     ts = synthetic_taskset(n_per_arm=20, n_shared=10)
     out = refine_layout(0.6, 0.5, ts, {"left": 0.1561, "right": 0.1561},
-                        DEFAULT_URDF, n_workers=8)
+                        akw["urdf_path"], base_frame=akw["base_frame"],
+                        ee_frame=akw["ee_frame"], joint_prefix=akw["joint_prefix"],
+                        n_workers=8)
     for k, v in out["summary"].items():
         if not isinstance(v, np.ndarray):
             print(f"  {k}: {v:.4f}" if isinstance(v, float) else f"  {k}: {v}")

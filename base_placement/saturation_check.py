@@ -27,12 +27,13 @@ import time
 import numpy as np
 
 from .capability_map import CapabilityMap, _worker_chunk, _worker_init
-from .robot_model import ArmModel, DEFAULT_URDF
+from .robot_model import (DEFAULT_BASE_FRAME, DEFAULT_EE_FRAME,
+                          DEFAULT_JOINT_PREFIX, ArmModel)
 
 
 def sampling_saturation_curve(
     side: str,
-    urdf_path: str = DEFAULT_URDF,
+    urdf_path: str,
     voxel_size: float = 0.05,
     n_dirs: int = 32,
     n_rolls: int = 8,
@@ -41,12 +42,15 @@ def sampling_saturation_curve(
     seed: int = 0,
     checkpoints: list[int] = (1_000_000, 3_000_000, 10_000_000, 30_000_000),
     margin_voxels: int = 2,
+    base_frame: str = DEFAULT_BASE_FRAME,
+    ee_frame: str = DEFAULT_EE_FRAME,
+    joint_prefix: str = DEFAULT_JOINT_PREFIX,
     verbose: bool = True,
 ) -> list[dict]:
     """单臂递增采样，在每个 checkpoint 记录可达 bin 数/平均命中次数/
     singleton 占比/w98，用于判断该 voxel_size 下 n_fk_samples 是否够。"""
     checkpoints = sorted(int(c) for c in checkpoints)
-    arm = ArmModel(side, urdf_path)
+    arm = ArmModel(side, urdf_path, base_frame, ee_frame, joint_prefix)
     rng = np.random.default_rng(seed)
 
     n_pre = 50_000
@@ -73,7 +77,8 @@ def sampling_saturation_curve(
     next_cp = 0
     rows = []
     with mp.Pool(n_workers, initializer=_worker_init,
-                 initargs=(side, urdf_path)) as pool:
+                 initargs=(side, urdf_path, base_frame, ee_frame,
+                           joint_prefix)) as pool:
         for pos, R, w, q in pool.imap_unordered(_worker_chunk, tasks, chunksize=1):
             cmap.accumulate(pos, R, w, q)
             done += len(w)
@@ -115,7 +120,8 @@ def main():
     ap = argparse.ArgumentParser(
         description="能力图采样饱和曲线：诊断 n_fk_samples 是否足够")
     ap.add_argument("--side", default="left", choices=["left", "right"])
-    ap.add_argument("--urdf-path", default=DEFAULT_URDF)
+    ap.add_argument("--urdf-path", default=None,
+                    help="默认从 config.yaml 的 robot.urdf_path 读取")
     ap.add_argument("--voxel-size", type=float, default=0.05)
     ap.add_argument("--n-dirs", type=int, default=32)
     ap.add_argument("--n-rolls", type=int, default=8)
@@ -125,10 +131,17 @@ def main():
                     default=[1e6, 3e6, 1e7, 3e7])
     args = ap.parse_args()
 
+    # URDF 路径与帧命名从 config.yaml 读取（不留硬编码路径）；--urdf-path 可覆盖
+    from .robot_model import arm_kwargs_from_cfg, load_robot_cfg
+    akw = arm_kwargs_from_cfg(load_robot_cfg())
+    urdf_path = args.urdf_path or akw["urdf_path"]
+
     rows = sampling_saturation_curve(
-        args.side, args.urdf_path, args.voxel_size, args.n_dirs, args.n_rolls,
+        args.side, urdf_path, args.voxel_size, args.n_dirs, args.n_rolls,
         args.n_workers, seed=args.seed,
-        checkpoints=[int(c) for c in args.checkpoints])
+        checkpoints=[int(c) for c in args.checkpoints],
+        base_frame=akw["base_frame"], ee_frame=akw["ee_frame"],
+        joint_prefix=akw["joint_prefix"])
     print_growth_report(rows)
 
 

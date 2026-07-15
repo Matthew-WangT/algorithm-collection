@@ -18,16 +18,31 @@ import os
 import numpy as np
 import pinocchio as pin
 
-DEFAULT_URDF = (
-    "/home/matthew/mindon/mindon_robotics/assets/resource/robot/rizon4/urdf/"
-    "serial_rizon4_with_gripper.urdf"
-)
+# 帧名 / 关节前缀模板（用 {side} 占位）——默认值对应 rizon4 双臂 URDF。
+# 换机器人（如 s1/astribot）时不要改这里，改 config.yaml 的 robot 段即可，
+# 由 arm_kwargs_from_cfg 覆盖。URDF 路径一律来自 config，代码不留硬编码路径。
+DEFAULT_BASE_FRAME = "{side}_base_link"
+DEFAULT_EE_FRAME = "{side}_gripper_f90c_end_effector_link"
+DEFAULT_JOINT_PREFIX = "{side}_joint"
 
-EE_FRAME = {
-    "left": "left_gripper_f90c_end_effector_link",
-    "right": "right_gripper_f90c_end_effector_link",
-}
-BASE_FRAME = {"left": "left_base_link", "right": "right_base_link"}
+_PKG_DIR = os.path.dirname(os.path.abspath(__file__))
+
+
+def load_robot_cfg(config_path: str | None = None) -> dict:
+    """读取 config.yaml 的 robot 段（供各模块 __main__ 冒烟共用）。"""
+    import yaml
+    with open(config_path or os.path.join(_PKG_DIR, "config.yaml")) as f:
+        return yaml.safe_load(f)["robot"]
+
+
+def arm_kwargs_from_cfg(robot_cfg: dict) -> dict:
+    """把 config 的 robot 段转成 ArmModel 的关键字参数（缺字段回退 rizon4 模板）。"""
+    return dict(
+        urdf_path=robot_cfg["urdf_path"],
+        base_frame=robot_cfg.get("base_frame", DEFAULT_BASE_FRAME),
+        ee_frame=robot_cfg.get("ee_frame", DEFAULT_EE_FRAME),
+        joint_prefix=robot_cfg.get("joint_prefix", DEFAULT_JOINT_PREFIX),
+    )
 
 
 def rpy_to_rotation(r: float, p: float, y: float) -> np.ndarray:
@@ -61,7 +76,10 @@ class ArmModel:
     所有输出位姿均在该臂 base_link 系下（消掉 pedestal 安装，与布局无关）。
     """
 
-    def __init__(self, side: str, urdf_path: str = DEFAULT_URDF):
+    def __init__(self, side: str, urdf_path: str,
+                 base_frame: str = DEFAULT_BASE_FRAME,
+                 ee_frame: str = DEFAULT_EE_FRAME,
+                 joint_prefix: str = DEFAULT_JOINT_PREFIX):
         if side not in ("left", "right"):
             raise ValueError(f"side 必须是 left/right: {side}")
         self.side = side
@@ -69,14 +87,15 @@ class ArmModel:
         self.model = pin.buildModelFromUrdf(self.urdf_path)
         self.data = self.model.createData()
 
-        self.ee_frame_id = self._frame_id(EE_FRAME[side])
-        self.base_frame_id = self._frame_id(BASE_FRAME[side])
+        self.ee_frame_id = self._frame_id(ee_frame.format(side=side))
+        self.base_frame_id = self._frame_id(base_frame.format(side=side))
 
         # 该臂的 7 个 revolute 关节（按 joint 名前缀识别，保持链序）
+        prefix = joint_prefix.format(side=side)
         self.joint_ids = [
             jid
             for jid in range(1, self.model.njoints)
-            if self.model.names[jid].startswith(f"{side}_joint")
+            if self.model.names[jid].startswith(prefix)
         ]
         if len(self.joint_ids) != 7:
             raise RuntimeError(
@@ -160,9 +179,14 @@ class ArmModel:
 
 
 def smoke_test() -> None:
-    """步骤 1 自检：帧存在、T_B_E 与手工消装配一致、默认位形朝向合理。"""
+    """步骤 1 自检：帧存在、T_B_E 与手工消装配一致、默认位形朝向合理。
+
+    URDF 路径与帧命名从 config.yaml 的 robot 段读取（不留硬编码路径）。
+    """
+    robot_cfg = load_robot_cfg()
+    akw = arm_kwargs_from_cfg(robot_cfg)
     for side in ("left", "right"):
-        arm = ArmModel(side)
+        arm = ArmModel(side, **akw)
         rng = np.random.default_rng(0)
         q_arm = arm.sample_arm_q(1, rng)[0]
 
@@ -182,18 +206,20 @@ def smoke_test() -> None:
         pts = arm.joint_positions_base(np.zeros(7))
         print(f"[{side}] 零位形关节链 |p|: {np.linalg.norm(pts, axis=1).round(3)}")
 
-    # 布局位姿：d=0.6, theta=0 应复现 URDF 原始安装（y=±0.3, rpy=(0,1.57,0)）
-    model = pin.buildModelFromUrdf(DEFAULT_URDF)
+    # 布局位姿 vs URDF 原始安装：仅 rizon4（d=0.6,θ=0 → y=±0.3, rpy=(0,1.57,0)）
+    # 时严格成立；换机器人（如 s1 臂装在 torso 上）安装位姿不同，仅作提示不断言。
+    model = pin.buildModelFromUrdf(os.path.abspath(robot_cfg["urdf_path"]))
     data = model.createData()
     pin.framesForwardKinematics(model, data, pin.neutral(model))
+    base_tmpl = robot_cfg.get("base_frame", DEFAULT_BASE_FRAME)
     for side in ("left", "right"):
-        fid = model.getFrameId(BASE_FRAME[side])
+        fid = model.getFrameId(base_tmpl.format(side=side))
         T_urdf = data.oMf[fid]
         T_ours = make_base_pose(side, d=0.6, theta=0.0)
         err_t = np.linalg.norm(T_urdf.translation - T_ours.translation)
         err_R = np.linalg.norm(T_urdf.rotation - T_ours.rotation)
-        print(f"[{side}] make_base_pose vs URDF: |Δt|={err_t:.2e}, |ΔR|={err_R:.2e}")
-        assert err_t < 1e-9 and err_R < 1e-6
+        print(f"[{side}] make_base_pose vs URDF base: |Δt|={err_t:.2e}, "
+              f"|ΔR|={err_R:.2e}（仅 rizon4 应为 0；其它机器人安装位姿本就不同）")
     print("smoke_test OK")
 
 

@@ -31,10 +31,6 @@ import re
 import mujoco
 import numpy as np
 
-DEFAULT_URDF = (
-    "/home/matthew/mindon/ik/rizon4_workspace_analysis/assets/rizon4/urdf/"
-    "serial_rizon4_with_gripper.urdf"
-)
 Z_BASE = 1.4
 PITCH = 1.57
 
@@ -152,7 +148,8 @@ def render_to_png(
 
 def main() -> None:
     ap = argparse.ArgumentParser(description=__doc__)
-    ap.add_argument("--urdf", default=DEFAULT_URDF)
+    ap.add_argument("--urdf", default=None,
+                    help="默认从 config.yaml 的 robot.urdf_path 读取")
     ap.add_argument("--d", type=float, required=True, help="两臂 base 间距 (m)")
     ap.add_argument("--theta", type=float, required=True, help="向内 roll (rad)")
     ap.add_argument(
@@ -166,7 +163,10 @@ def main() -> None:
     ap.add_argument("--distance", type=float, default=2.6)
     args = ap.parse_args()
 
-    urdf = make_layout_urdf(args.urdf, args.d, args.theta, args.tmp_dir)
+    # URDF 路径从 config.yaml 读取（不留硬编码路径）；--urdf 可覆盖
+    from .robot_model import load_robot_cfg
+    urdf_src = args.urdf or load_robot_cfg()["urdf_path"]
+    urdf = make_layout_urdf(urdf_src, args.d, args.theta, args.tmp_dir)
 
     if args.out is None:
         print(f"打开交互式 viewer: d={args.d:.2f} m, theta={args.theta:.2f} rad")

@@ -20,7 +20,8 @@ import time
 
 import numpy as np
 
-from .robot_model import ArmModel, DEFAULT_URDF
+from .robot_model import (DEFAULT_BASE_FRAME, DEFAULT_EE_FRAME,
+                          DEFAULT_JOINT_PREFIX, ArmModel)
 
 
 def fibonacci_sphere(n: int) -> np.ndarray:
@@ -201,9 +202,10 @@ class CapabilityMap:
 _WORKER_ARM: ArmModel | None = None
 
 
-def _worker_init(side: str, urdf_path: str):
+def _worker_init(side: str, urdf_path: str, base_frame: str,
+                 ee_frame: str, joint_prefix: str):
     global _WORKER_ARM
-    _WORKER_ARM = ArmModel(side, urdf_path)
+    _WORKER_ARM = ArmModel(side, urdf_path, base_frame, ee_frame, joint_prefix)
 
 
 def _worker_chunk(args) -> tuple[np.ndarray, np.ndarray, np.ndarray, np.ndarray]:
@@ -225,7 +227,7 @@ def _worker_chunk(args) -> tuple[np.ndarray, np.ndarray, np.ndarray, np.ndarray]
 
 def build_capability_map(
     side: str,
-    urdf_path: str = DEFAULT_URDF,
+    urdf_path: str,
     n_samples: int = 10_000_000,
     voxel_size: float = 0.05,
     n_dirs: int = 32,
@@ -234,11 +236,14 @@ def build_capability_map(
     chunk_size: int = 100_000,
     seed: int = 0,
     margin_voxels: int = 2,
+    base_frame: str = DEFAULT_BASE_FRAME,
+    ee_frame: str = DEFAULT_EE_FRAME,
+    joint_prefix: str = DEFAULT_JOINT_PREFIX,
     verbose: bool = True,
 ) -> CapabilityMap:
     """FK 采样构建某臂能力图。先预采样定 AABB，再并行全量采样落 bin。"""
     t0 = time.time()
-    arm = ArmModel(side, urdf_path)
+    arm = ArmModel(side, urdf_path, base_frame, ee_frame, joint_prefix)
     rng = np.random.default_rng(seed)
 
     # 预采样确定网格范围
@@ -260,7 +265,9 @@ def build_capability_map(
     n_chunks = int(np.ceil(n_samples / chunk_size))
     tasks = [(seed + 1 + c, min(chunk_size, n_samples - c * chunk_size))
              for c in range(n_chunks)]
-    with mp.Pool(n_workers, initializer=_worker_init, initargs=(side, urdf_path)) as pool:
+    with mp.Pool(n_workers, initializer=_worker_init,
+                 initargs=(side, urdf_path, base_frame, ee_frame,
+                           joint_prefix)) as pool:
         done = 0
         for pos, R, w, q in pool.imap_unordered(_worker_chunk, tasks, chunksize=1):
             cmap.accumulate(pos, R, w, q)
@@ -295,7 +302,9 @@ def self_check(cmap: CapabilityMap, arm: ArmModel, n: int = 200, seed: int = 123
 
 
 if __name__ == "__main__":
-    # 小规模冒烟：1e5 样本建左臂图 + 自检
-    m = build_capability_map("left", n_samples=100_000, n_workers=8)
-    self_check(m, ArmModel("left"))
+    # 小规模冒烟：1e5 样本建左臂图 + 自检（URDF/帧命名从 config.yaml 读取）
+    from .robot_model import arm_kwargs_from_cfg, load_robot_cfg
+    akw = arm_kwargs_from_cfg(load_robot_cfg())
+    m = build_capability_map("left", n_samples=100_000, n_workers=8, **akw)
+    self_check(m, ArmModel("left", **akw))
     # visualize_fibonacci_sphere(64, save_path='./fib_sphere_test.png')
