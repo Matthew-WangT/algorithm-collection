@@ -23,7 +23,7 @@ import numpy as np
 from .capability_map import CapabilityMap
 from .capsules import (DEFAULT_RADII, capsule_capsule_min_distance,
                        chain_table_margin, transform_chain)
-from .robot_model import ArmModel, make_base_pose
+from .robot_model import DEFAULT_URDF, ArmModel, make_base_pose
 from .task_points import TaskSet
 
 
@@ -44,9 +44,13 @@ class ScoringParams:
 
 class LayoutEvaluator:
     def __init__(self, cmap_left: CapabilityMap, cmap_right: CapabilityMap,
-                 tasks: TaskSet, params: ScoringParams | None = None):
+                 tasks: TaskSet, params: ScoringParams | None = None,
+                 urdf_path: str = DEFAULT_URDF):
         self.cmaps = {"left": cmap_left, "right": cmap_right}
-        self.arms = {"left": ArmModel("left"), "right": ArmModel("right")}
+        # urdf_path 必须显式贯通：胶囊链 FK 用的 ArmModel 要与建图/精评同一 URDF，
+        # 否则会静默回退到 DEFAULT_URDF（换机器/换标定 URDF 时打分模型错配）。
+        self.arms = {"left": ArmModel("left", urdf_path),
+                     "right": ArmModel("right", urdf_path)}
         self.tasks = tasks
         self.p = params or ScoringParams()
 

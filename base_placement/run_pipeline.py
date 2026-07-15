@@ -128,7 +128,8 @@ def cmd_scan(cfg):
     plot_capmap_slices(cl, os.path.join(figs, "capmap_left_D.png"))
     plot_capmap_slices(cr, os.path.join(figs, "capmap_right_D.png"))
 
-    ev = LayoutEvaluator(cl, cr, ts, _scoring_params(cfg))
+    ev = LayoutEvaluator(cl, cr, ts, _scoring_params(cfg),
+                         urdf_path=cfg["robot"]["urdf_path"])
     d_vals, th_vals = _grid(cfg)
     results = ev.scan_grid(d_vals, th_vals)
     with open(os.path.join(out_dir, "scan_results.json"), "w") as f:
@@ -156,7 +157,8 @@ def cmd_refine(cfg):
     top = results[: cfg["refine"]["top_k"]]
 
     cl, cr, ts = _load_maps_tasks(cfg)
-    ev = LayoutEvaluator(cl, cr, ts, _scoring_params(cfg))
+    ev = LayoutEvaluator(cl, cr, ts, _scoring_params(cfg),
+                         urdf_path=cfg["robot"]["urdf_path"])
     r_cfg, s_cfg, L = cfg["refine"], cfg["scoring"], cfg["layout"]
     w_ref = {"left": cl.w98, "right": cr.w98}
 
