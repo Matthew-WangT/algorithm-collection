@@ -1,7 +1,12 @@
 # 双臂 Rizon4 base 布局优化 — 全部可调参数
 robot:
-  urdf_path: /home/matthew/mindon/mindon_robotics/assets/resource/robot/rizon4/urdf/serial_rizon4_with_gripper.urdf
+  urdf_path: /Users/matthew/mindon/mindon_robotics/assets/resource/robot/s1/urdf/serial_s1_with_gripper.urdf
   # 注意：部署到实机前应换成 flexiv_rdk Model::SyncURDF() 导出的标定 URDF
+  # 帧名 / 关节前缀模板（{side} 会替换成 left/right）。换机器人只改这里，代码不动。
+  # rizon4 用 "{side}_base_link" / "{side}_gripper_f90c_end_effector_link" / "{side}_joint"
+  base_frame: astribot_arm_{side}_base_link
+  ee_frame: "{side}_gripper_f90c_end_effector_link"
+  joint_prefix: astribot_arm_{side}_joint
 
 map:
   voxel_size: 0.05
